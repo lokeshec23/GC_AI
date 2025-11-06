@@ -1,0 +1,87 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+.flaskenv
+
+# Environment variables
+.env
+.venv/
+venv/
+env/
+# virtualenv
+# Virtual environment created by `uv`
+.venv
+
+# IDE-specific files
+.idea/
+.vscode/
+*.swp
+*.bak
+*.swo
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook files
+.ipynb_checkpoints
+
+# FastAPI-specific
+# Any automatically generated documentation files you don't want to commit
+# For example, if you generate OpenAPI specs to a file:
+openapi.json
+
+# PyInstaller
+# These files are typically generated before PyInstaller builds the exe
+*.manifest
+*.spec
