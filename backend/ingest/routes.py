@@ -29,6 +29,14 @@ async def ingest_guideline(
     Upload PDF and extract rules using custom prompt.
     Returns session_id for progress tracking.
     """
+
+     # ✅ Add debug logging
+    print(f"📥 Received request:")
+    print(f"  - File: {file.filename} ({file.content_type})")
+    print(f"  - Provider: {model_provider}")
+    print(f"  - Model: {model_name}")
+    print(f"  - Prompt length: {len(custom_prompt)} chars")
+    print(f"  - User ID: {user_id}")
     
     # Validate model
     if model_provider not in SUPPORTED_MODELS:

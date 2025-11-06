@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
   Form,
@@ -10,7 +10,6 @@ import {
   Alert,
   Space,
   Tag,
-  Upload,
 } from "antd";
 import {
   PaperClipOutlined,
@@ -58,11 +57,12 @@ const IngestPage = () => {
     gemini: [],
   });
   const [selectedProvider, setSelectedProvider] = useState("openai");
+  const fileInputRef = useRef(null); // ✅ Add ref for file input
 
   useEffect(() => {
     fetchSupportedModels();
 
-    // ✅ Set initial form values after component mounts
+    // Set initial form values
     form.setFieldsValue({
       model_provider: "openai",
       model_name: "gpt-4o",
@@ -79,15 +79,29 @@ const IngestPage = () => {
     }
   };
 
-  const handleFileChange = (info) => {
-    const uploadedFile = info.file.originFileObj || info.file;
-    setFile(uploadedFile);
-    message.success(`${uploadedFile.name} selected`);
+  // ✅ Fixed file handler - use native input
+  const handleFileSelect = (event) => {
+    const selectedFile = event.target.files[0];
+    if (selectedFile) {
+      if (selectedFile.type !== "application/pdf") {
+        message.error("Please select a PDF file");
+        return;
+      }
+      setFile(selectedFile);
+      message.success(`${selectedFile.name} selected`);
+    }
   };
 
   const handleRemoveFile = () => {
     setFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     message.info("File removed");
+  };
+
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleSubmit = async (values) => {
@@ -95,6 +109,9 @@ const IngestPage = () => {
       message.error("Please upload a PDF file");
       return;
     }
+
+    console.log("Submitting with values:", values);
+    console.log("File:", file);
 
     try {
       setProcessing(true);
@@ -107,6 +124,12 @@ const IngestPage = () => {
       formData.append("model_provider", values.model_provider);
       formData.append("model_name", values.model_name);
       formData.append("custom_prompt", values.custom_prompt);
+
+      // Debug: Log FormData contents
+      console.log("FormData contents:");
+      for (let pair of formData.entries()) {
+        console.log(pair[0], pair[1]);
+      }
 
       // Start processing
       const response = await ingestAPI.ingestGuideline(formData);
@@ -138,6 +161,8 @@ const IngestPage = () => {
       };
     } catch (error) {
       setProcessing(false);
+      console.error("Submit error:", error);
+      console.error("Error response:", error.response?.data);
       message.error(error.response?.data?.detail || "Processing failed");
     }
   };
@@ -222,6 +247,16 @@ const IngestPage = () => {
             className="mb-0"
           >
             <div className="relative">
+              {/* Hidden File Input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                onChange={handleFileSelect}
+                style={{ display: "none" }}
+                disabled={processing}
+              />
+
               {/* Prompt Text Area */}
               <TextArea
                 placeholder="Enter your extraction prompt here..."
@@ -231,29 +266,21 @@ const IngestPage = () => {
                   paddingBottom: "60px",
                 }}
                 disabled={processing}
-                value={DEFAULT_PROMPT}
               />
 
               {/* File Upload + Send Button Container (Bottom Right) */}
               <div className="absolute bottom-3 right-3 flex items-center gap-2">
                 {/* File Attachment */}
                 {!file ? (
-                  <Upload
-                    accept=".pdf"
-                    showUploadList={false}
-                    beforeUpload={() => false}
-                    onChange={handleFileChange}
+                  <Button
+                    icon={<PaperClipOutlined />}
+                    size="large"
+                    className="flex items-center gap-2"
                     disabled={processing}
+                    onClick={handleAttachClick}
                   >
-                    <Button
-                      icon={<PaperClipOutlined />}
-                      size="large"
-                      className="flex items-center gap-2"
-                      disabled={processing}
-                    >
-                      Attach PDF
-                    </Button>
-                  </Upload>
+                    Attach PDF
+                  </Button>
                 ) : (
                   <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
                     <FileTextOutlined className="text-blue-600" />
