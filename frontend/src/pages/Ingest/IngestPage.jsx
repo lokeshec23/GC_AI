@@ -3,7 +3,6 @@ import {
   Card,
   Form,
   Select,
-  Upload,
   Button,
   Input,
   message,
@@ -11,18 +10,41 @@ import {
   Alert,
   Space,
   Tag,
+  Upload,
 } from "antd";
 import {
-  UploadOutlined,
+  PaperClipOutlined,
   SendOutlined,
   FileTextOutlined,
   DownloadOutlined,
   ThunderboltOutlined,
+  CloseCircleOutlined,
 } from "@ant-design/icons";
 import { ingestAPI, settingsAPI } from "../../services/api";
 
 const { TextArea } = Input;
 const { Option } = Select;
+
+// ✅ Move default prompt OUTSIDE component
+const DEFAULT_PROMPT = `You are an expert mortgage guideline analyst.
+Extract all rules, eligibility criteria, and conditions from this mortgage guideline document.
+
+### INSTRUCTIONS
+1. Identify major sections and subsections
+2. For each major section, provide a brief summary
+3. Extract specific rules, conditions, and requirements
+4. Maintain the hierarchical structure
+5. Output in JSON format
+
+### OUTPUT FORMAT
+{
+  "Section Title": {
+    "summary": "Brief description of this section",
+    "Subsection Title": "Key rules and conditions"
+  }
+}
+
+Only extract information explicitly stated in the document.`;
 
 const IngestPage = () => {
   const [form] = Form.useForm();
@@ -39,7 +61,14 @@ const IngestPage = () => {
 
   useEffect(() => {
     fetchSupportedModels();
-  }, []);
+
+    // ✅ Set initial form values after component mounts
+    form.setFieldsValue({
+      model_provider: "openai",
+      model_name: "gpt-4o",
+      custom_prompt: DEFAULT_PROMPT,
+    });
+  }, [form]);
 
   const fetchSupportedModels = async () => {
     try {
@@ -50,10 +79,15 @@ const IngestPage = () => {
     }
   };
 
-  const handleFileChange = ({ file }) => {
-    if (file.status !== "uploading") {
-      setFile(file.originFileObj);
-    }
+  const handleFileChange = (info) => {
+    const uploadedFile = info.file.originFileObj || info.file;
+    setFile(uploadedFile);
+    message.success(`${uploadedFile.name} selected`);
+  };
+
+  const handleRemoveFile = () => {
+    setFile(null);
+    message.info("File removed");
   };
 
   const handleSubmit = async (values) => {
@@ -114,26 +148,6 @@ const IngestPage = () => {
     }
   };
 
-  const defaultPrompt = `You are an expert mortgage guideline analyst.
-Extract all rules, eligibility criteria, and conditions from this mortgage guideline document.
-
-### INSTRUCTIONS
-1. Identify major sections and subsections
-2. For each major section, provide a brief summary
-3. Extract specific rules, conditions, and requirements
-4. Maintain the hierarchical structure
-5. Output in JSON format
-
-### OUTPUT FORMAT
-{
-  "Section Title": {
-    "summary": "Brief description of this section",
-    "Subsection Title": "Key rules and conditions"
-  }
-}
-
-Only extract information explicitly stated in the document.`;
-
   return (
     <div className="max-w-5xl mx-auto">
       <div className="mb-6">
@@ -146,32 +160,22 @@ Only extract information explicitly stated in the document.`;
         </p>
       </div>
 
-      <Form
-        form={form}
-        layout="vertical"
-        onFinish={handleSubmit}
-        initialValues={{
-          model_provider: "openai",
-          model_name: "gpt-4o",
-          custom_prompt: defaultPrompt,
-        }}
-      >
+      <Form form={form} layout="vertical" onFinish={handleSubmit}>
         {/* Model Selection */}
-        <Card
-          title={
-            <>
-              <ThunderboltOutlined /> Select Model
-            </>
-          }
-          className="mb-6"
-        >
+        <Card className="mb-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Form.Item
-              label="Model Provider"
+              label={
+                <span className="flex items-center gap-2">
+                  <ThunderboltOutlined />
+                  <strong>Model Provider</strong>
+                </span>
+              }
               name="model_provider"
               rules={[{ required: true, message: "Please select a provider" }]}
             >
               <Select
+                size="large"
                 onChange={(value) => {
                   setSelectedProvider(value);
                   form.setFieldsValue({
@@ -195,11 +199,11 @@ Only extract information explicitly stated in the document.`;
             </Form.Item>
 
             <Form.Item
-              label="Model Name"
+              label={<strong>Model Name</strong>}
               name="model_name"
               rules={[{ required: true, message: "Please select a model" }]}
             >
-              <Select>
+              <Select size="large">
                 {supportedModels[selectedProvider]?.map((model) => (
                   <Option key={model} value={model}>
                     {model}
@@ -210,69 +214,84 @@ Only extract information explicitly stated in the document.`;
           </div>
         </Card>
 
-        {/* File Upload */}
-        <Card title="📄 Upload PDF" className="mb-6">
-          <Form.Item
-            name="file"
-            rules={[{ required: true, message: "Please upload a PDF file" }]}
-          >
-            <Upload
-              accept=".pdf"
-              maxCount={1}
-              beforeUpload={() => false}
-              onChange={handleFileChange}
-            >
-              <Button icon={<UploadOutlined />} size="large" block>
-                Choose PDF File
-              </Button>
-            </Upload>
-          </Form.Item>
-
-          {file && (
-            <Alert
-              message={`Selected: ${file.name} (${(
-                file.size /
-                1024 /
-                1024
-              ).toFixed(2)} MB)`}
-              type="success"
-              showIcon
-            />
-          )}
-        </Card>
-
-        {/* Custom Prompt */}
-        <Card title="✍️ Custom Extraction Prompt" className="mb-6">
+        {/* ChatGPT-Style Prompt Box */}
+        <Card className="mb-6">
           <Form.Item
             name="custom_prompt"
             rules={[{ required: true, message: "Please enter a prompt" }]}
+            className="mb-0"
           >
-            <TextArea
-              rows={12}
-              placeholder="Enter your extraction prompt here..."
-              className="font-mono text-sm"
-            />
+            <div className="relative">
+              {/* Prompt Text Area */}
+              <TextArea
+                placeholder="Enter your extraction prompt here..."
+                className="font-mono text-sm resize-none pr-24"
+                style={{
+                  minHeight: "320px",
+                  paddingBottom: "60px",
+                }}
+                disabled={processing}
+                value={DEFAULT_PROMPT}
+              />
+
+              {/* File Upload + Send Button Container (Bottom Right) */}
+              <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                {/* File Attachment */}
+                {!file ? (
+                  <Upload
+                    accept=".pdf"
+                    showUploadList={false}
+                    beforeUpload={() => false}
+                    onChange={handleFileChange}
+                    disabled={processing}
+                  >
+                    <Button
+                      icon={<PaperClipOutlined />}
+                      size="large"
+                      className="flex items-center gap-2"
+                      disabled={processing}
+                    >
+                      Attach PDF
+                    </Button>
+                  </Upload>
+                ) : (
+                  <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
+                    <FileTextOutlined className="text-blue-600" />
+                    <span className="text-sm font-medium text-blue-800 max-w-[150px] truncate">
+                      {file.name}
+                    </span>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<CloseCircleOutlined />}
+                      onClick={handleRemoveFile}
+                      disabled={processing}
+                      className="text-blue-600 hover:text-blue-800"
+                    />
+                  </div>
+                )}
+
+                {/* Send Button */}
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  icon={<SendOutlined />}
+                  size="large"
+                  loading={processing}
+                  disabled={processing || !file}
+                  className="flex items-center gap-2"
+                >
+                  {processing ? "Processing..." : "Send"}
+                </Button>
+              </div>
+            </div>
           </Form.Item>
 
-          <div className="bg-blue-50 p-3 rounded text-sm text-blue-800">
-            💡 <strong>Tip:</strong> Be specific about the structure and format
-            you want in the output
+          {/* Tip at bottom */}
+          <div className="mt-3 text-xs text-gray-500 flex items-center gap-2">
+            💡 <span>Attach a PDF file and click Send to start processing</span>
           </div>
         </Card>
-
-        {/* Submit Button */}
-        <div className="flex justify-end mb-6">
-          <Button
-            type="primary"
-            htmlType="submit"
-            icon={<SendOutlined />}
-            size="large"
-            loading={processing}
-            disabled={processing}
-          >
-            {processing ? "Processing..." : "Start Processing"}
-          </Button>
-        </div>
       </Form>
 
       {/* Progress Section */}
@@ -292,10 +311,10 @@ Only extract information explicitly stated in the document.`;
 
       {/* Download Section */}
       {!processing && sessionId && progress === 100 && (
-        <Card title="✅ Processing Complete" className="mb-6">
+        <Card className="mb-6">
           <Alert
-            message="Your extraction is ready!"
-            description="Click the button below to download the Excel file with extracted rules."
+            message="✅ Processing Complete!"
+            description="Your extraction is ready. Click below to download the Excel file."
             type="success"
             showIcon
             className="mb-4"
