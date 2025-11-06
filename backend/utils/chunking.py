@@ -4,7 +4,7 @@ from typing import List
 
 def split_text_into_chunks(
     text: str, 
-    max_tokens: int = 7000,
+    max_tokens: int = 3000,  # ✅ Reduced from 7000
     overlap_tokens: int = 200,
     model: str = "gpt-4o"
 ) -> List[str]:
@@ -13,7 +13,7 @@ def split_text_into_chunks(
     
     Args:
         text: Full text to split
-        max_tokens: Maximum tokens per chunk
+        max_tokens: Maximum tokens per chunk (reduced for better results)
         overlap_tokens: Overlap between chunks for context
         model: Model name for tokenizer
     
@@ -29,6 +29,9 @@ def split_text_into_chunks(
     tokens = encoding.encode(text)
     chunks = []
     
+    print(f"📊 Total tokens in document: {len(tokens)}")
+    print(f"📊 Chunk size: {max_tokens} tokens")
+    
     start = 0
     while start < len(tokens):
         end = start + max_tokens
@@ -39,7 +42,6 @@ def split_text_into_chunks(
         # Move start forward, accounting for overlap
         start = end - overlap_tokens
         
-        # Prevent infinite loop
         if start >= len(tokens) or end >= len(tokens):
             break
     

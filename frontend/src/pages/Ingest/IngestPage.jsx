@@ -32,32 +32,50 @@ const { TextArea } = Input;
 const { Option } = Select;
 
 // ✅ Default prompt as constant
-const DEFAULT_PROMPT = `You are an expert U.S. mortgage underwriting analyst. 
+// ✅ Updated prompt - Request JSON format
+const DEFAULT_PROMPT = `You are an expert U.S. mortgage underwriting analyst.
 You will be given text from a mortgage guideline document.
-Your job is to extract and structure it into a clean table format.
+Your job is to extract and structure it into clean, valid JSON.
 
 INSTRUCTIONS:
 1. Identify major sections and subsections based on titles, numbering, or formatting.
-2. For each major section, write a short 2–3 line summary.
-3. For each subsection, summarize the rules, requirements, or eligibility criteria in 2–3 lines.
+2. For each major section, provide a brief 2-3 line summary.
+3. For each subsection, extract the key rules, requirements, or eligibility criteria in 2-3 lines.
 4. Keep all section and subsection titles exactly as written in the original text.
-5. Do not add, guess, or infer information not directly present.
+5. Do NOT add, guess, or infer information not present in the source.
 6. Maintain the original hierarchy and document order.
 
-OUTPUT FORMAT:
-Provide a markdown table with these columns:
-
-| Major Section Title | Subsection Title | Summary / Key Requirements |
-|---------------------|------------------|----------------------------|
-| (Section name) | (Subsection or blank) | (2-3 sentence summary) |
+OUTPUT FORMAT (JSON ONLY):
+Return a JSON array where each object represents a row with these fields:
+- "major_section": The main section title (string)
+- "subsection": The subsection title or empty string if it's a section header (string)
+- "summary": The summary or key requirements (string)
 
 Example:
-| Major Section Title | Subsection Title | Summary / Key Requirements |
-|---------------------|------------------|----------------------------|
-| 301. Non-U.S. Citizen Eligibility | | This section covers eligibility requirements for non-U.S. citizens applying for mortgage loans. |
-| 301. Non-U.S. Citizen Eligibility | Work Permit Requirements | Borrower must have valid work permit or visa. Minimum 3 years of work history required. |
+[
+  {
+    "major_section": "301. Non-U.S. Citizen Eligibility",
+    "subsection": "",
+    "summary": "This section covers eligibility requirements for non-U.S. citizens applying for mortgage loans."
+  },
+  {
+    "major_section": "301. Non-U.S. Citizen Eligibility",
+    "subsection": "Work Permit Requirements",
+    "summary": "Borrower must have valid work permit or visa. Minimum 3 years of work history required."
+  },
+  {
+    "major_section": "302. Income Verification",
+    "subsection": "",
+    "summary": "Guidelines for verifying borrower income from various sources."
+  }
+]
 
-Output ONLY the table. No additional text before or after.`;
+CRITICAL:
+- Output ONLY valid JSON array
+- No markdown, no code blocks, no explanations
+- Start with [ and end with ]
+- Ensure all JSON is properly escaped
+- Each object must have all three fields (use empty string "" if not applicable)`;
 
 const IngestPage = () => {
   const [form] = Form.useForm();
@@ -245,18 +263,24 @@ const IngestPage = () => {
   };
 
   // ✅ Convert preview data to table rows
+  // ✅ Simplified - data is already in correct format
   const convertToTableData = (data) => {
-    if (!data || typeof data !== "object") {
-      console.log("Invalid preview data:", data);
+    console.log(
+      "Preview data type:",
+      typeof data,
+      "IsArray:",
+      Array.isArray(data)
+    );
+
+    if (!data) {
+      console.log("No preview data");
       return [];
     }
 
-    const rows = [];
-    let rowId = 0;
-
-    // Handle array format (from table parser)
+    // ✅ Data is already array of objects from backend
     if (Array.isArray(data)) {
-      console.log("Converting array data, length:", data.length);
+      console.log(`Converting ${data.length} rows to table format`);
+
       return data.map((item, idx) => ({
         key: idx,
         major_section: item.major_section || "",
@@ -265,46 +289,16 @@ const IngestPage = () => {
       }));
     }
 
-    // Handle object format
-    console.log("Converting object data, keys:", Object.keys(data));
-    for (const [section, content] of Object.entries(data)) {
-      if (
-        typeof content === "object" &&
-        content !== null &&
-        !Array.isArray(content)
-      ) {
-        // Add section header
-        rows.push({
-          key: rowId++,
-          major_section: section,
-          subsection: "",
-          summary: content.summary || "",
-        });
-
-        // Add subsections
-        for (const [key, value] of Object.entries(content)) {
-          if (key !== "summary") {
-            rows.push({
-              key: rowId++,
-              major_section: "",
-              subsection: key,
-              summary:
-                typeof value === "string" ? value : JSON.stringify(value),
-            });
-          }
-        }
-      } else {
-        rows.push({
-          key: rowId++,
-          major_section: section,
-          subsection: "",
-          summary: String(content),
-        });
-      }
-    }
-
-    console.log("Converted rows:", rows.length);
-    return rows;
+    // Fallback for old format (shouldn't happen with new backend)
+    console.warn("Unexpected data format, attempting to convert:", data);
+    return [
+      {
+        key: 0,
+        major_section: "Error",
+        subsection: "",
+        summary: "Unexpected data format received",
+      },
+    ];
   };
 
   const tableColumns = [

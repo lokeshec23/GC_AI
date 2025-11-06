@@ -54,10 +54,13 @@ class LLMProvider:
         return response.choices[0].message.content
     
     def _generate_gemini(self, prompt: str) -> str:
-        """Call Gemini API - Fixed version with better error handling"""
+        """Call Gemini API with better error handling"""
         headers = {
             "Content-Type": "application/json"
         }
+        
+        # ✅ Use higher max tokens for Gemini (includes thinking tokens)
+        effective_max_tokens = max(self.max_tokens, 8192)
         
         payload = {
             "contents": [
@@ -71,17 +74,17 @@ class LLMProvider:
             ],
             "generationConfig": {
                 "temperature": self.temperature,
-                "maxOutputTokens": self.max_tokens,
+                "maxOutputTokens": effective_max_tokens,  # ✅ Increased
                 "topP": self.top_p,
             }
         }
         
-        # Add stop sequences if provided
         if self.stop_sequences:
             payload["generationConfig"]["stopSequences"] = self.stop_sequences
         
         try:
             print(f"📤 Calling Gemini API: {self.model}")
+            print(f"   Max output tokens: {effective_max_tokens}")
             
             response = requests.post(
                 self.api_url,
@@ -92,7 +95,6 @@ class LLMProvider:
             
             print(f"📥 Response status: {response.status_code}")
             
-            # Check for HTTP errors
             if response.status_code != 200:
                 print(f"❌ HTTP Error {response.status_code}")
                 print(f"Response body: {response.text}")
@@ -100,32 +102,64 @@ class LLMProvider:
             
             result = response.json()
             
-            # Debug: Print response structure
             print(f"📊 Response keys: {list(result.keys())}")
             
-            # Handle different response formats
+            # ✅ Handle response
             if "candidates" in result and len(result["candidates"]) > 0:
                 candidate = result["candidates"][0]
                 
-                # Check for safety blocks
-                if "finishReason" in candidate:
-                    finish_reason = candidate["finishReason"]
-                    if finish_reason != "STOP":
-                        print(f"⚠️ Unexpected finish reason: {finish_reason}")
-                        if "safetyRatings" in candidate:
-                            print(f"Safety ratings: {candidate['safetyRatings']}")
+                # ✅ Check finish reason
+                finish_reason = candidate.get("finishReason", "UNKNOWN")
+                print(f"   Finish reason: {finish_reason}")
                 
-                # Extract text
-                if "content" in candidate and "parts" in candidate["content"]:
-                    parts = candidate["content"]["parts"]
-                    if len(parts) > 0 and "text" in parts[0]:
-                        text_response = parts[0]["text"]
-                        print(f"✅ Got response: {len(text_response)} characters")
-                        return text_response
+                # ✅ Handle MAX_TOKENS error
+                if finish_reason == "MAX_TOKENS":
+                    usage = result.get("usageMetadata", {})
+                    print(f"   ⚠️ Response truncated - hit max tokens limit")
+                    print(f"   Prompt tokens: {usage.get('promptTokenCount', 'unknown')}")
+                    print(f"   Total tokens: {usage.get('totalTokenCount', 'unknown')}")
+                    print(f"   Thoughts tokens: {usage.get('thoughtsTokenCount', 'unknown')}")
+                    
+                    # Check if there's partial content
+                    if "content" in candidate and "parts" in candidate["content"]:
+                        parts = candidate["content"]["parts"]
+                        if len(parts) > 0 and "text" in parts[0]:
+                            partial_text = parts[0]["text"]
+                            print(f"   ✅ Got partial response: {len(partial_text)} characters")
+                            print(f"   ⚠️ WARNING: Response may be incomplete!")
+                            return partial_text
+                    
+                    # No content at all
+                    raise Exception(
+                        f"Response exceeded maximum token limit ({effective_max_tokens} tokens). "
+                        f"Try reducing chunk size or simplifying the prompt. "
+                        f"Prompt used {usage.get('promptTokenCount', 'unknown')} tokens."
+                    )
+                
+                # ✅ Handle SAFETY blocks
+                if finish_reason == "SAFETY":
+                    print(f"   ⚠️ Content blocked by safety filters")
+                    if "safetyRatings" in candidate:
+                        print(f"   Safety ratings: {candidate['safetyRatings']}")
+                    raise Exception("Content was blocked by safety filters. Try rephrasing the prompt.")
+                
+                # ✅ Extract text from successful response
+                if "content" in candidate:
+                    content = candidate["content"]
+                    
+                    if "parts" in content and len(content["parts"]) > 0:
+                        parts = content["parts"]
+                        if "text" in parts[0]:
+                            text_response = parts[0]["text"]
+                            print(f"   ✅ Got response: {len(text_response)} characters")
+                            return text_response
+                        else:
+                            print(f"   ❌ No 'text' in parts: {parts}")
                     else:
-                        print(f"❌ No text in parts: {parts}")
+                        print(f"   ❌ No 'parts' in content: {content}")
+                        print(f"   Content keys: {list(content.keys())}")
                 else:
-                    print(f"❌ No content/parts in candidate: {candidate.keys()}")
+                    print(f"   ❌ No 'content' in candidate")
             
             # Check for error in response
             if "error" in result:
@@ -133,15 +167,17 @@ class LLMProvider:
                 print(f"❌ API Error: {error_msg}")
                 raise Exception(f"Gemini API Error: {error_msg}")
             
-            # If we get here, response format is unexpected
+            # If we get here, unexpected format
             print(f"❌ Unexpected response format")
             print(f"Full response: {json.dumps(result, indent=2)}")
-            raise ValueError(f"Unexpected Gemini API response format. Response: {result}")
+            raise ValueError(f"Unexpected Gemini API response format. Check logs for details.")
             
+        except requests.exceptions.Timeout:
+            raise Exception("Gemini API request timed out. Try with a smaller chunk.")
         except requests.exceptions.RequestException as e:
             print(f"❌ Request failed: {str(e)}")
             raise Exception(f"Gemini API request failed: {str(e)}")
         except json.JSONDecodeError as e:
             print(f"❌ Failed to parse JSON response: {str(e)}")
-            print(f"Raw response: {response.text}")
+            print(f"Raw response: {response.text[:500]}")
             raise Exception(f"Failed to parse Gemini response as JSON: {str(e)}")

@@ -99,9 +99,9 @@ const SettingsPage = () => {
         onFinish={handleSubmit}
         initialValues={{
           temperature: 0.7,
-          max_output_tokens: 4096,
+          max_output_tokens: 8192, // ✅ Changed from 4096
           top_p: 1.0,
-          chunk_size: 7000,
+          chunk_size: 3000, // ✅ Changed from 7000
           chunk_overlap: 200,
           stop_sequences: [],
         }}
@@ -192,15 +192,21 @@ const SettingsPage = () => {
             <Form.Item
               label="Max Output Tokens"
               name="max_output_tokens"
-              tooltip="Maximum length of generated response"
+              tooltip="Maximum length of generated response. Gemini needs higher values (8192+) due to thinking tokens."
               rules={[{ required: true }]}
+              extra={
+                <span className="text-xs text-orange-600">
+                  ⚠️ For Gemini models, use at least 8192 tokens to avoid
+                  truncation
+                </span>
+              }
             >
               <InputNumber
-                min={1}
+                min={1000}
                 max={128000}
-                step={256}
+                step={1024}
                 className="w-full"
-                placeholder="4096"
+                placeholder="8192"
               />
             </Form.Item>
 

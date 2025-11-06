@@ -37,8 +37,8 @@ SUPPORTED_MODELS = {
 GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 # Default Settings
-DEFAULT_TEMPERATURE = 0.7
-DEFAULT_MAX_TOKENS = 4096
+DEFAULT_TEMPERATURE = 0.2
+DEFAULT_MAX_TOKENS = 8192  # ✅ Increased from 4096 for Gemini thinking tokens
 DEFAULT_TOP_P = 1.0
-DEFAULT_CHUNK_SIZE = 7000
+DEFAULT_CHUNK_SIZE = 3000  # ✅ Reduced from 7000 to fit within limits
 DEFAULT_CHUNK_OVERLAP = 200
