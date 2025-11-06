@@ -83,8 +83,8 @@ const MainLayout = ({ children }) => {
 
   return (
     <Layout className="h-screen overflow-hidden">
-      {/* Header - Light with border */}
-      <Header className="bg-white border-b border-gray-200 flex items-center justify-between px-6 fixed w-full z-10 h-16">
+      {/* Header - Light white with shadow at bottom */}
+      <Header className="bg-white shadow-md flex items-center justify-between px-6 fixed w-full z-10 h-16">
         <div className="flex items-center gap-3">
           <FileSearchOutlined className="text-3xl text-blue-600" />
           <Text className="text-xl font-bold text-gray-800">
