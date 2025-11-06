@@ -1,13 +1,13 @@
 import React from "react";
 import { Card, Empty, Button } from "antd";
-import { CompareOutlined, ToolOutlined } from "@ant-design/icons";
+import { SwapOutlined, ToolOutlined } from "@ant-design/icons"; // ✅ Changed
 
 const ComparePage = () => {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
-          <CompareOutlined />
+          <SwapOutlined /> {/* ✅ Changed */}
           Compare Guidelines
         </h1>
         <p className="text-gray-600 mt-2">

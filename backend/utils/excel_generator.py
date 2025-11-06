@@ -69,4 +69,40 @@ def json_to_excel(json_data: dict, output_path: str) -> str:
                     ws[f'C{row}'] = value
                     row += 1
                 elif isinstance(value, (dict, list)):
-                    # Recurse 
+                    # Recurse into nested structures
+                    write_nested_data(value, key, indent_level + 1)
+                else:
+                    # Handle other types
+                    ws[f'A{row}'] = section_name
+                    ws[f'B{row}'] = key
+                    ws[f'C{row}'] = str(value)
+                    row += 1
+        
+        elif isinstance(data, list):
+            for item in data:
+                write_nested_data(item, section_name, indent_level)
+        
+        else:
+            # Handle primitive values
+            ws[f'A{row}'] = section_name
+            ws[f'C{row}'] = str(data)
+            row += 1
+    
+    # Process the JSON data
+    write_nested_data(json_data)
+    
+    # Adjust column widths
+    ws.column_dimensions['A'].width = 30
+    ws.column_dimensions['B'].width = 40
+    ws.column_dimensions['C'].width = 80
+    
+    # Enable text wrapping for all cells
+    for row_cells in ws.iter_rows(min_row=1, max_row=ws.max_row):
+        for cell in row_cells:
+            cell.alignment = Alignment(wrap_text=True, vertical='top')
+    
+    # Save workbook
+    wb.save(output_path)
+    print(f"✅ Excel file created: {output_path}")
+    
+    return output_path

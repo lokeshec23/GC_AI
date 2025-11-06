@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Layout, Menu, Avatar, Dropdown, Space, Typography } from "antd";
 import {
   FileTextOutlined,
-  CompareOutlined,
+  SwapOutlined, // ✅ Changed from CompareOutlined
   SettingOutlined,
   UserOutlined,
   LogoutOutlined,
@@ -29,7 +29,7 @@ const MainLayout = ({ children }) => {
     },
     {
       key: "/compare",
-      icon: <CompareOutlined />,
+      icon: <SwapOutlined />, // ✅ Changed from CompareOutlined
       label: "Compare Guidelines",
     },
     {
@@ -39,7 +39,7 @@ const MainLayout = ({ children }) => {
     },
   ];
 
-  // User dropdown menu
+  // ... rest of the component stays the same
   const userMenuItems = [
     {
       key: "profile",
