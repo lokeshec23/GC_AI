@@ -1,12 +1,22 @@
 import React, { useState } from "react";
-import { Layout, Menu, Avatar, Dropdown, Space, Typography } from "antd";
+import {
+  Layout,
+  Menu,
+  Avatar,
+  Dropdown,
+  Space,
+  Typography,
+  Button,
+} from "antd";
 import {
   FileTextOutlined,
-  SwapOutlined, // ✅ Changed from CompareOutlined
+  SwapOutlined,
   SettingOutlined,
   UserOutlined,
   LogoutOutlined,
   FileSearchOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -29,7 +39,7 @@ const MainLayout = ({ children }) => {
     },
     {
       key: "/compare",
-      icon: <SwapOutlined />, // ✅ Changed from CompareOutlined
+      icon: <SwapOutlined />,
       label: "Compare Guidelines",
     },
     {
@@ -39,7 +49,7 @@ const MainLayout = ({ children }) => {
     },
   ];
 
-  // ... rest of the component stays the same
+  // User dropdown menu
   const userMenuItems = [
     {
       key: "profile",
@@ -72,9 +82,9 @@ const MainLayout = ({ children }) => {
   };
 
   return (
-    <Layout className="min-h-screen">
-      {/* Header */}
-      <Header className="bg-white shadow-md flex items-center justify-between px-6 fixed w-full z-10">
+    <Layout className="h-screen overflow-hidden">
+      {/* Header - Light with border */}
+      <Header className="bg-white border-b border-gray-200 flex items-center justify-between px-6 fixed w-full z-10 h-16">
         <div className="flex items-center gap-3">
           <FileSearchOutlined className="text-3xl text-blue-600" />
           <Text className="text-xl font-bold text-gray-800">
@@ -87,7 +97,7 @@ const MainLayout = ({ children }) => {
           placement="bottomRight"
           trigger={["click"]}
         >
-          <Space className="cursor-pointer hover:bg-gray-100 px-3 py-2 rounded-lg transition">
+          <Space className="cursor-pointer hover:bg-gray-50 px-3 py-2 rounded-lg transition">
             <Avatar icon={<UserOutlined />} className="bg-blue-500" />
             <Text className="font-medium hidden sm:inline">
               {user?.username}
@@ -96,29 +106,41 @@ const MainLayout = ({ children }) => {
         </Dropdown>
       </Header>
 
-      <Layout className="mt-16">
-        {/* Sidebar */}
+      <Layout className="mt-16 h-[calc(100vh-64px)]">
+        {/* Sidebar - White background matching content */}
         <Sider
           collapsible
           collapsed={collapsed}
           onCollapse={setCollapsed}
-          className="bg-white shadow-lg"
+          trigger={null}
+          className="bg-white border-r border-gray-200"
           width={240}
           theme="light"
         >
+          {/* Collapse/Expand Button at Top */}
+          <div className="flex justify-end p-4 border-b border-gray-200">
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+              className="flex items-center justify-center"
+            />
+          </div>
+
+          {/* Menu */}
           <Menu
             mode="inline"
             selectedKeys={[location.pathname]}
             items={menuItems}
             onClick={handleMenuClick}
-            className="h-full border-r-0 pt-4"
+            className="h-full border-r-0"
           />
         </Sider>
 
-        {/* Main Content */}
+        {/* Main Content - Scrollable, fit to viewport */}
         <Layout className="bg-gray-50">
-          <Content className="m-6 p-6 bg-white rounded-lg shadow-sm min-h-[calc(100vh-120px)]">
-            {children}
+          <Content className="overflow-y-auto h-full">
+            <div className="p-6">{children}</div>
           </Content>
         </Layout>
       </Layout>

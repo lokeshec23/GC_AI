@@ -10,7 +10,6 @@ import {
   Tag,
   message,
   Spin,
-  Alert,
   Collapse,
 } from "antd";
 import {
@@ -44,7 +43,6 @@ const SettingsPage = () => {
       form.setFieldsValue(response.data);
     } catch (error) {
       if (error.response?.status === 404) {
-        // No settings yet, use defaults
         message.info("No settings found. Using default values.");
       } else {
         message.error("Failed to load settings");
@@ -117,14 +115,6 @@ const SettingsPage = () => {
           }
           className="mb-6"
         >
-          <Alert
-            message="Security Notice"
-            description="API keys are stored in plain text in the database. Keep your account secure."
-            type="warning"
-            showIcon
-            className="mb-4"
-          />
-
           <Form.Item
             label="OpenAI API Key"
             name="openai_api_key"

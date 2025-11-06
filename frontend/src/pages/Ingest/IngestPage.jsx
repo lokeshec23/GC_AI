@@ -11,7 +11,6 @@ import {
   Alert,
   Space,
   Tag,
-  Divider,
 } from "antd";
 import {
   UploadOutlined,
@@ -209,13 +208,6 @@ Only extract information explicitly stated in the document.`;
               </Select>
             </Form.Item>
           </div>
-
-          <Alert
-            message="Make sure you've configured your API key in Settings"
-            type="info"
-            showIcon
-            className="mt-2"
-          />
         </Card>
 
         {/* File Upload */}
@@ -262,11 +254,10 @@ Only extract information explicitly stated in the document.`;
             />
           </Form.Item>
 
-          <Alert
-            message="Tip: Be specific about the structure and format you want in the output"
-            type="info"
-            showIcon
-          />
+          <div className="bg-blue-50 p-3 rounded text-sm text-blue-800">
+            💡 <strong>Tip:</strong> Be specific about the structure and format
+            you want in the output
+          </div>
         </Card>
 
         {/* Submit Button */}
