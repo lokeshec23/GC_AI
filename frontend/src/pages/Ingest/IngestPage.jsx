@@ -12,6 +12,7 @@ import {
   Table,
   Modal,
   Spin,
+  Tooltip,
 } from "antd";
 import {
   PaperClipOutlined,
@@ -23,13 +24,14 @@ import {
   EyeOutlined,
   FileExcelOutlined,
   LoadingOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import { ingestAPI, settingsAPI } from "../../services/api";
 
 const { TextArea } = Input;
 const { Option } = Select;
 
-// ✅ Default prompt for table format
+// ✅ Default prompt as constant
 const DEFAULT_PROMPT = `You are an expert U.S. mortgage underwriting analyst. 
 You will be given text from a mortgage guideline document.
 Your job is to extract and structure it into a clean table format.
@@ -71,6 +73,9 @@ const IngestPage = () => {
   const [selectedProvider, setSelectedProvider] = useState("gemini");
   const [previewData, setPreviewData] = useState(null);
 
+  // ✅ State for prompt (allows user to edit)
+  const [promptValue, setPromptValue] = useState(DEFAULT_PROMPT);
+
   // ✅ Modal states
   const [processingModalVisible, setProcessingModalVisible] = useState(false);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
@@ -80,13 +85,16 @@ const IngestPage = () => {
   useEffect(() => {
     fetchSupportedModels();
 
-    // Set initial form values
+    // ✅ Set initial form values including prompt
     form.setFieldsValue({
       model_provider: "gemini",
       model_name: "gemini-2.5-flash-preview-05-20",
       custom_prompt: DEFAULT_PROMPT,
     });
-  }, [form]);
+
+    // ✅ Set prompt state
+    setPromptValue(DEFAULT_PROMPT);
+  }, []);
 
   const fetchSupportedModels = async () => {
     try {
@@ -121,9 +129,29 @@ const IngestPage = () => {
     fileInputRef.current?.click();
   };
 
+  // ✅ Reset prompt to default
+  const handleResetPrompt = () => {
+    setPromptValue(DEFAULT_PROMPT);
+    form.setFieldsValue({ custom_prompt: DEFAULT_PROMPT });
+    message.success("Prompt reset to default");
+  };
+
+  // ✅ Handle prompt change
+  const handlePromptChange = (e) => {
+    setPromptValue(e.target.value);
+  };
+
   const handleSubmit = async (values) => {
     if (!file) {
       message.error("Please upload a PDF file");
+      return;
+    }
+
+    // ✅ Use current prompt value (user's custom or default)
+    const currentPrompt = promptValue.trim();
+
+    if (!currentPrompt) {
+      message.error("Please enter a prompt");
       return;
     }
 
@@ -132,14 +160,19 @@ const IngestPage = () => {
       setProgress(0);
       setProgressMessage("Initializing...");
       setPreviewData(null);
-      setProcessingModalVisible(true); // ✅ Show processing modal
+      setProcessingModalVisible(true);
 
       // Create FormData
       const formData = new FormData();
       formData.append("file", file);
       formData.append("model_provider", values.model_provider);
       formData.append("model_name", values.model_name);
-      formData.append("custom_prompt", values.custom_prompt);
+      formData.append("custom_prompt", currentPrompt); // ✅ Use current prompt
+
+      console.log(
+        "Submitting with prompt:",
+        currentPrompt.substring(0, 100) + "..."
+      );
 
       // Start processing
       const response = await ingestAPI.ingestGuideline(formData);
@@ -159,7 +192,7 @@ const IngestPage = () => {
         if (data.progress >= 100) {
           eventSource.close();
           setProcessing(false);
-          setProcessingModalVisible(false); // ✅ Hide processing modal
+          setProcessingModalVisible(false);
 
           // Fetch preview data
           fetchPreviewData(session_id);
@@ -187,8 +220,9 @@ const IngestPage = () => {
   const fetchPreviewData = async (sid) => {
     try {
       const response = await ingestAPI.getPreview(sid);
+      console.log("Preview data received:", response.data);
       setPreviewData(response.data);
-      setPreviewModalVisible(true); // ✅ Show preview modal
+      setPreviewModalVisible(true);
     } catch (error) {
       console.error("Failed to fetch preview:", error);
       message.error("Failed to load preview data");
@@ -208,21 +242,21 @@ const IngestPage = () => {
     setPreviewModalVisible(false);
     setPreviewData(null);
     setSessionId(null);
-    setFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
   };
 
   // ✅ Convert preview data to table rows
   const convertToTableData = (data) => {
-    if (!data || typeof data !== "object") return [];
+    if (!data || typeof data !== "object") {
+      console.log("Invalid preview data:", data);
+      return [];
+    }
 
     const rows = [];
     let rowId = 0;
 
     // Handle array format (from table parser)
     if (Array.isArray(data)) {
+      console.log("Converting array data, length:", data.length);
       return data.map((item, idx) => ({
         key: idx,
         major_section: item.major_section || "",
@@ -232,8 +266,13 @@ const IngestPage = () => {
     }
 
     // Handle object format
+    console.log("Converting object data, keys:", Object.keys(data));
     for (const [section, content] of Object.entries(data)) {
-      if (typeof content === "object" && content !== null) {
+      if (
+        typeof content === "object" &&
+        content !== null &&
+        !Array.isArray(content)
+      ) {
         // Add section header
         rows.push({
           key: rowId++,
@@ -264,6 +303,7 @@ const IngestPage = () => {
       }
     }
 
+    console.log("Converted rows:", rows.length);
     return rows;
   };
 
@@ -365,7 +405,25 @@ const IngestPage = () => {
         </Card>
 
         {/* ChatGPT-Style Prompt Box */}
-        <Card className="mb-6">
+        <Card
+          className="mb-6"
+          title={
+            <div className="flex items-center justify-between">
+              <span className="text-base font-semibold">Extraction Prompt</span>
+              <Tooltip title="Reset to default prompt">
+                <Button
+                  type="link"
+                  icon={<ReloadOutlined />}
+                  onClick={handleResetPrompt}
+                  disabled={processing}
+                  size="small"
+                >
+                  Reset to Default
+                </Button>
+              </Tooltip>
+            </div>
+          }
+        >
           <Form.Item
             name="custom_prompt"
             rules={[{ required: true, message: "Please enter a prompt" }]}
@@ -382,16 +440,17 @@ const IngestPage = () => {
                 disabled={processing}
               />
 
-              {/* Prompt Text Area */}
+              {/* ✅ Controlled Prompt Text Area */}
               <TextArea
-                placeholder="Enter your extraction prompt here..."
+                value={promptValue}
+                onChange={handlePromptChange}
+                placeholder="Enter your extraction prompt here... (You can edit or clear this prompt)"
                 className="font-mono text-sm resize-none pr-24"
                 style={{
                   minHeight: "320px",
                   paddingBottom: "60px",
                 }}
                 disabled={processing}
-                value={DEFAULT_PROMPT}
               />
 
               {/* File Upload + Send Button Container */}
@@ -439,7 +498,11 @@ const IngestPage = () => {
           </Form.Item>
 
           <div className="mt-3 text-xs text-gray-500 flex items-center gap-2">
-            💡 <span>Attach a PDF file and click Send to start processing</span>
+            💡{" "}
+            <span>
+              You can edit the prompt above or use the default. Attach a PDF and
+              click Send to start.
+            </span>
           </div>
         </Card>
       </Form>
@@ -487,7 +550,7 @@ const IngestPage = () => {
         </div>
       </Modal>
 
-      {/* ✅ Preview Modal */}
+      {/* ✅ Preview Modal - Fixed Pagination */}
       <Modal
         title={
           <div className="flex items-center gap-2 text-lg">
@@ -497,10 +560,10 @@ const IngestPage = () => {
         }
         open={previewModalVisible}
         onCancel={handleClosePreview}
-        width={1200}
+        width={1400}
         centered
         footer={[
-          <Button key="close" onClick={handleClosePreview}>
+          <Button key="close" onClick={handleClosePreview} size="large">
             Close
           </Button>,
           <Button
@@ -513,9 +576,10 @@ const IngestPage = () => {
             Download Excel
           </Button>,
         ]}
+        bodyStyle={{ padding: "24px" }}
       >
         {previewData ? (
-          <div className="max-h-[600px] overflow-auto">
+          <div>
             <div className="mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
               <p className="text-sm text-green-800 flex items-center gap-2">
                 <EyeOutlined />
@@ -526,15 +590,19 @@ const IngestPage = () => {
               </p>
             </div>
 
+            {/* ✅ Fixed Table with proper pagination */}
             <Table
               columns={tableColumns}
               dataSource={convertToTableData(previewData)}
               pagination={{
-                pageSize: 20,
+                pageSize: 10,
                 showSizeChanger: true,
-                showTotal: (total) => `Total ${total} rows`,
+                showQuickJumper: true,
+                pageSizeOptions: ["10", "20", "50", "100"],
+                showTotal: (total, range) =>
+                  `${range[0]}-${range[1]} of ${total} rows`,
               }}
-              scroll={{ y: 450 }}
+              scroll={{ x: "max-content" }}
               size="small"
               bordered
               rowClassName={(record) =>
