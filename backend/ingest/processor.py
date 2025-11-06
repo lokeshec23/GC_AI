@@ -6,7 +6,7 @@ from typing import Optional
 from utils.ocr import AzureOCR
 from utils.chunking import split_text_into_chunks
 from utils.llm_provider import LLMProvider
-from utils.excel_generator import json_to_excel
+from utils.text_to_excel import parse_any_format_to_excel  # ✅ NEW
 from utils.progress import update_progress
 
 def process_guideline_background(
@@ -18,9 +18,7 @@ def process_guideline_background(
     model_name: str,
     custom_prompt: str
 ):
-    """
-    Background task for processing PDF guideline extraction.
-    """
+    """Background task for processing PDF guideline extraction"""
     excel_path = None
     
     try:
@@ -58,7 +56,7 @@ def process_guideline_background(
         # STEP 3: LLM Processing (35% → 85%)
         update_progress(session_id, 40, f"Initializing {model_provider} LLM...")
         
-        # Get API key based on provider
+        # Get API key
         api_key = user_settings.get(f"{model_provider}_api_key")
         if not api_key:
             raise ValueError(f"No API key found for {model_provider}")
@@ -74,24 +72,28 @@ def process_guideline_background(
             stop_sequences=user_settings.get("stop_sequences", [])
         )
         
-        update_progress(session_id, 45, f"Processing {num_chunks} chunks with custom prompt...")
+        update_progress(session_id, 45, f"Processing {num_chunks} chunks...")
         
-        # Process all chunks
-        extraction_result = llm.process_chunks(chunks, custom_prompt)
+        # ✅ Process chunks and combine raw responses
+        all_responses = []
+        for idx, chunk in enumerate(chunks):
+            print(f"Processing chunk {idx+1}/{num_chunks}...")
+            full_prompt = f"{custom_prompt}\n\n### TEXT TO PROCESS\n{chunk}"
+            
+            response = llm.generate(full_prompt)
+            all_responses.append(response)
+            
+            progress_pct = 45 + int((idx + 1) / num_chunks * 40)
+            update_progress(session_id, progress_pct, f"Processed {idx+1}/{num_chunks} chunks")
         
-        # ✅ DEBUG: Check extraction result
-        print(f"\n📊 Extraction result type: {type(extraction_result)}")
-        print(f"📊 Extraction result keys: {list(extraction_result.keys()) if isinstance(extraction_result, dict) else 'Not a dict'}")
-        print(f"📊 Extraction result size: {len(json.dumps(extraction_result))} bytes")
-        
-        if not extraction_result:
-            print("⚠️ WARNING: extraction_result is empty!")
-            extraction_result = {"error": "No data extracted"}
+        # Combine all responses
+        combined_response = "\n\n".join(all_responses)
         
         update_progress(session_id, 85, "✅ LLM processing complete")
         print(f"✅ Extraction completed\n")
+        print(f"📊 Combined response length: {len(combined_response)} chars")
 
-        # STEP 4: Generate Excel (85% → 95%)
+        # STEP 4: Convert to Excel (85% → 95%)
         update_progress(session_id, 87, "Converting to Excel format...")
         
         # Create temporary Excel file
@@ -101,7 +103,8 @@ def process_guideline_background(
             prefix=f"extraction_{session_id[:8]}_"
         ).name
         
-        json_to_excel(extraction_result, excel_path)
+        # ✅ Use new universal parser
+        parse_any_format_to_excel(combined_response, excel_path)
         
         file_size = os.path.getsize(excel_path)
         update_progress(session_id, 95, f"✅ Excel generated ({file_size:,} bytes)")
@@ -112,47 +115,36 @@ def process_guideline_background(
         print(f"{'='*60}")
         print(f"✅ PROCESSING COMPLETE")
         print(f"📊 Excel file: {excel_path}")
+        print(f"📊 File size: {file_size:,} bytes")
         print(f"{'='*60}\n")
         
-        # ✅ Store result with detailed logging
+        # ✅ Store results
         from utils.progress import progress_store, progress_lock
         
-        print(f"📥 Storing results for session: {session_id}")
-        print(f"   - Excel path: {excel_path}")
-        print(f"   - Preview data size: {len(json.dumps(extraction_result))} bytes")
-        print(f"   - Filename: extraction_{filename.replace('.pdf', '.xlsx')}")
+        # Parse for preview (re-parse the combined response)
+        from utils.text_to_excel import parse_content
+        preview_data = parse_content(combined_response)
         
         with progress_lock:
-            if session_id in progress_store:
-                progress_store[session_id]["excel_path"] = excel_path
-                progress_store[session_id]["preview_data"] = extraction_result
-                progress_store[session_id]["filename"] = f"extraction_{filename.replace('.pdf', '.xlsx')}"
-                progress_store[session_id]["status"] = "completed"
-                
-                # ✅ Verify storage
-                print(f"✅ Stored in progress_store:")
-                print(f"   - Has excel_path: {'excel_path' in progress_store[session_id]}")
-                print(f"   - Has preview_data: {'preview_data' in progress_store[session_id]}")
-                print(f"   - Has filename: {'filename' in progress_store[session_id]}")
-                print(f"   - Status: {progress_store[session_id].get('status')}")
-            else:
-                print(f"❌ ERROR: Session {session_id} not found in progress_store!")
-                # Create entry if missing
-                progress_store[session_id] = {
-                    "progress": 100,
-                    "message": "✅ Processing complete!",
-                    "excel_path": excel_path,
-                    "preview_data": extraction_result,
-                    "filename": f"extraction_{filename.replace('.pdf', '.xlsx')}",
-                    "status": "completed"
-                }
-                print(f"✅ Created new entry in progress_store")
+            if session_id not in progress_store:
+                progress_store[session_id] = {}
+            
+            progress_store[session_id].update({
+                "excel_path": excel_path,
+                "preview_data": preview_data,
+                "filename": f"extraction_{filename.replace('.pdf', '.xlsx')}",
+                "status": "completed",
+                "progress": 100,
+                "message": "✅ Processing complete!"
+            })
+            
+            print(f"✅ Stored in progress_store")
 
     except Exception as e:
+        import traceback
         error_msg = str(e)
         print(f"\n{'='*60}")
         print(f"❌ ERROR: {error_msg}")
-        import traceback
         traceback.print_exc()
         print(f"{'='*60}\n")
         
