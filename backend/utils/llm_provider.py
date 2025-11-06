@@ -130,18 +130,28 @@ class LLMProvider:
             # Generate response
             response_content = self.generate(full_prompt)
             
+            # ✅ DEBUG: Log response
+            print(f"   Response length: {len(response_content)} chars")
+            print(f"   Response preview: {response_content[:200]}...")
+            
             # Parse JSON response
             try:
                 chunk_result = json.loads(response_content)
+                print(f"   ✅ Parsed JSON successfully")
             except json.JSONDecodeError:
                 cleaned = self._clean_json_response(response_content)
                 try:
                     chunk_result = json.loads(cleaned)
+                    print(f"   ✅ Parsed cleaned JSON successfully")
                 except json.JSONDecodeError:
-                    print(f"⚠️ Failed to parse JSON for chunk {idx+1}, skipping...")
+                    print(f"   ⚠️ Failed to parse JSON for chunk {idx+1}, skipping...")
+                    print(f"   Raw response: {response_content[:500]}")
                     continue
             
-            # Merge results (same logic as your old code)
+            # ✅ DEBUG: Log chunk result
+            print(f"   Chunk result keys: {list(chunk_result.keys())}")
+            
+            # Merge results
             for key, value in chunk_result.items():
                 if key not in final_result:
                     final_result[key] = value
@@ -152,5 +162,14 @@ class LLMProvider:
                         final_result[key].extend(value)
                     else:
                         final_result[key] = value
+        
+        # ✅ DEBUG: Final result summary
+        print(f"\n✅ Merged final result:")
+        print(f"   Total keys: {len(final_result)}")
+        print(f"   Keys: {list(final_result.keys())}")
+        print(f"   Total size: {len(json.dumps(final_result))} bytes")
+        
+        if not final_result:
+            print(f"   ⚠️ WARNING: final_result is empty!")
         
         return final_result

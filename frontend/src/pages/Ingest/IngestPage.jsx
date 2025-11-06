@@ -7,11 +7,10 @@ import {
   Input,
   message,
   Progress,
-  Alert,
   Space,
   Tag,
   Table,
-  Collapse,
+  Divider,
 } from "antd";
 import {
   PaperClipOutlined,
@@ -21,12 +20,12 @@ import {
   ThunderboltOutlined,
   CloseCircleOutlined,
   EyeOutlined,
+  FileExcelOutlined,
 } from "@ant-design/icons";
 import { ingestAPI, settingsAPI } from "../../services/api";
 
 const { TextArea } = Input;
 const { Option } = Select;
-const { Panel } = Collapse;
 
 // ✅ Default prompt
 const DEFAULT_PROMPT = `You are an expert mortgage guideline analyst.
@@ -61,7 +60,8 @@ const IngestPage = () => {
     gemini: [],
   });
   const [selectedProvider, setSelectedProvider] = useState("gemini");
-  const [previewData, setPreviewData] = useState(null); // ✅ NEW
+  const [previewData, setPreviewData] = useState(null);
+  const [excelReady, setExcelReady] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -118,7 +118,8 @@ const IngestPage = () => {
       setProcessing(true);
       setProgress(0);
       setProgressMessage("Initializing...");
-      setPreviewData(null); // ✅ Reset preview
+      setPreviewData(null);
+      setExcelReady(false);
 
       // Create FormData
       const formData = new FormData();
@@ -147,8 +148,9 @@ const IngestPage = () => {
           setProcessing(false);
           message.success("Processing complete!");
 
-          // ✅ Fetch preview data
+          // ✅ Fetch preview data and mark Excel as ready
           fetchPreviewData(session_id);
+          setExcelReady(true);
         }
       };
 
@@ -165,23 +167,26 @@ const IngestPage = () => {
     }
   };
 
-  // ✅ NEW: Fetch preview data
+  // ✅ Fetch preview data
   const fetchPreviewData = async (sid) => {
     try {
       const response = await ingestAPI.getPreview(sid);
       setPreviewData(response.data);
     } catch (error) {
       console.error("Failed to fetch preview:", error);
+      message.error("Failed to load preview data");
     }
   };
 
+  // ✅ Handle Excel download
   const handleDownload = () => {
     if (sessionId) {
-      ingestAPI.downloadResult(sessionId);
+      message.loading("Preparing download...", 0.5);
+      ingestAPI.downloadExcel(sessionId);
     }
   };
 
-  // ✅ NEW: Convert JSON to table data
+  // ✅ Convert JSON to table data
   const convertToTableData = (data) => {
     const rows = [];
     let rowId = 0;
@@ -204,8 +209,20 @@ const IngestPage = () => {
             details: value,
             isHeader: false,
           });
-        } else if (typeof value === "object" && value !== null) {
+        } else if (
+          typeof value === "object" &&
+          value !== null &&
+          !Array.isArray(value)
+        ) {
           processObject(value, key);
+        } else if (Array.isArray(value)) {
+          rows.push({
+            key: rowId++,
+            section: sectionName,
+            subsection: key,
+            details: JSON.stringify(value, null, 2),
+            isHeader: false,
+          });
         }
       }
     };
@@ -221,7 +238,9 @@ const IngestPage = () => {
       key: "section",
       width: "20%",
       render: (text, record) => (
-        <span className={record.isHeader ? "font-bold" : ""}>{text}</span>
+        <span className={record.isHeader ? "font-bold text-blue-700" : ""}>
+          {text}
+        </span>
       ),
     },
     {
@@ -230,7 +249,9 @@ const IngestPage = () => {
       key: "subsection",
       width: "25%",
       render: (text, record) => (
-        <span className={record.isHeader ? "font-bold" : ""}>{text}</span>
+        <span className={record.isHeader ? "font-bold text-blue-700" : ""}>
+          {text}
+        </span>
       ),
     },
     {
@@ -238,11 +259,12 @@ const IngestPage = () => {
       dataIndex: "details",
       key: "details",
       width: "55%",
+      render: (text) => <div className="whitespace-pre-wrap">{text}</div>,
     },
   ];
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
           <FileTextOutlined />
@@ -336,9 +358,8 @@ const IngestPage = () => {
                 disabled={processing}
               />
 
-              {/* File Upload + Send Button Container (Bottom Right) */}
+              {/* File Upload + Send Button Container */}
               <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                {/* File Attachment */}
                 {!file ? (
                   <Button
                     icon={<PaperClipOutlined />}
@@ -366,7 +387,6 @@ const IngestPage = () => {
                   </div>
                 )}
 
-                {/* Send Button */}
                 <Button
                   type="primary"
                   htmlType="submit"
@@ -382,7 +402,6 @@ const IngestPage = () => {
             </div>
           </Form.Item>
 
-          {/* Tip at bottom */}
           <div className="mt-3 text-xs text-gray-500 flex items-center gap-2">
             💡 <span>Attach a PDF file and click Send to start processing</span>
           </div>
@@ -404,34 +423,61 @@ const IngestPage = () => {
         </Card>
       )}
 
-      {/* ✅ NEW: Preview + Download Section */}
-      {!processing && sessionId && progress === 100 && previewData && (
+      {/* ✅ Excel Preview Section */}
+      {!processing && excelReady && previewData && (
         <Card
+          className="mb-6"
           title={
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <EyeOutlined />
-                Excel Preview
+              <span className="flex items-center gap-2 text-lg">
+                <FileExcelOutlined className="text-green-600" />
+                <strong>Extraction Results</strong>
               </span>
               <Button
                 type="primary"
                 icon={<DownloadOutlined />}
+                size="large"
                 onClick={handleDownload}
               >
                 Download Excel
               </Button>
             </div>
           }
-          className="mb-6"
         >
-          <Table
-            columns={tableColumns}
-            dataSource={convertToTableData(previewData)}
-            pagination={{ pageSize: 20 }}
-            scroll={{ y: 400 }}
-            size="small"
-            bordered
-          />
+          <Divider orientation="left">
+            <EyeOutlined /> Preview
+          </Divider>
+
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <Table
+              columns={tableColumns}
+              dataSource={convertToTableData(previewData)}
+              pagination={{
+                pageSize: 20,
+                showSizeChanger: true,
+                showTotal: (total) => `Total ${total} rows`,
+              }}
+              scroll={{ y: 500, x: "max-content" }}
+              size="small"
+              bordered
+              className="shadow-sm"
+              rowClassName={(record) => (record.isHeader ? "bg-blue-50" : "")}
+            />
+          </div>
+
+          <Divider />
+
+          <div className="flex justify-center">
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              size="large"
+              onClick={handleDownload}
+              className="px-8"
+            >
+              Download Excel File
+            </Button>
+          </div>
         </Card>
       )}
     </div>

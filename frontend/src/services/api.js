@@ -78,6 +78,7 @@ export const settingsAPI = {
 
 // ==================== INGEST APIs ====================
 // Add to ingestAPI object
+// ==================== INGEST APIs ====================
 export const ingestAPI = {
   ingestGuideline: (formData) =>
     api.post("/ingest/guideline", formData, {
@@ -86,17 +87,29 @@ export const ingestAPI = {
 
   getStatus: (sessionId) => api.get(`/ingest/status/${sessionId}`),
 
-  // ✅ NEW: Get preview data
+  // Get preview data (JSON)
   getPreview: (sessionId) => api.get(`/ingest/preview/${sessionId}`),
 
-  // Progress stream (EventSource, not axios)
+  // ✅ NEW: Get Excel as base64
+  getExcelBase64: (sessionId) => api.get(`/ingest/excel/${sessionId}`),
+
+  // Progress stream (EventSource)
   createProgressStream: (sessionId) => {
     return new EventSource(`${API_BASE_URL}/ingest/progress/${sessionId}`);
   },
 
-  downloadResult: (sessionId) => {
-    window.open(`${API_BASE_URL}/ingest/download/${sessionId}`, "_blank");
+  // ✅ Download Excel file
+  downloadExcel: (sessionId) => {
+    const link = document.createElement("a");
+    link.href = `${API_BASE_URL}/ingest/download/${sessionId}`;
+    link.download = "extraction.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   },
+
+  // Cleanup session
+  cleanupSession: (sessionId) => api.delete(`/ingest/cleanup/${sessionId}`),
 };
 
 // ==================== COMPARE APIs (Placeholder for future) ====================

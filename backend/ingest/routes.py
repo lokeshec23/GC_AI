@@ -4,7 +4,7 @@ import uuid
 import tempfile
 import json
 from fastapi import APIRouter, File, UploadFile, Form, BackgroundTasks, HTTPException, Depends
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response
 from ingest.schemas import IngestResponse, ProcessingStatus
 from ingest.processor import process_guideline_background
 from settings.models import get_user_settings
@@ -13,6 +13,7 @@ from utils.progress import get_progress, delete_progress, progress_store, progre
 from config import SUPPORTED_MODELS
 import asyncio
 from typing import AsyncGenerator
+import base64
 
 router = APIRouter(prefix="/ingest", tags=["Ingest Guideline"])
 
@@ -25,16 +26,12 @@ async def ingest_guideline(
     custom_prompt: str = Form(...),
     user_id: str = Depends(get_current_user_id)
 ):
-    """
-    Upload PDF and extract rules using custom prompt.
-    Returns session_id for progress tracking.
-    """
+    """Upload PDF and extract rules using custom prompt"""
     
     print(f"📥 Received request:")
     print(f"  - File: {file.filename} ({file.content_type})")
     print(f"  - Provider: {model_provider}")
     print(f"  - Model: {model_name}")
-    print(f"  - Prompt length: {len(custom_prompt)} chars")
     print(f"  - User ID: {user_id}")
     
     # Validate model
@@ -55,7 +52,7 @@ async def ingest_guideline(
             detail="Please configure your settings first (API keys required)"
         )
     
-    # Check if API key exists for selected provider
+    # Check API key
     api_key = settings.get(f"{model_provider}_api_key")
     if not api_key:
         raise HTTPException(
@@ -71,9 +68,7 @@ async def ingest_guideline(
     session_id = str(uuid.uuid4())
     
     print(f"\n{'='*60}")
-    print(f"📥 File upload: {file.filename}")
     print(f"🆔 Session: {session_id}")
-    print(f"👤 User: {user_id}")
     print(f"{'='*60}\n")
     
     # Save PDF temporarily
@@ -113,7 +108,7 @@ async def progress_stream(session_id: str):
     async def event_generator() -> AsyncGenerator[str, None]:
         last_progress = -1
         retry_count = 0
-        max_retries = 600  # 5 minutes timeout
+        max_retries = 600
         
         print(f"🔌 SSE connected: {session_id[:8]}")
         
@@ -163,25 +158,41 @@ async def get_status(session_id: str):
         )
 
 
-# ✅ NEW: Preview endpoint
+# ✅ Get preview data (JSON for table display)
+# ✅ Get preview data (JSON for table display)
 @router.get("/preview/{session_id}")
 async def get_preview(session_id: str):
-    """Get JSON preview data for display in UI"""
+    """Get JSON preview data for display in UI table"""
+    print(f"\n📥 Preview request for session: {session_id}")
+    
     with progress_lock:
+        # ✅ Debug: Check what's in progress_store
+        print(f"   - Session exists in store: {session_id in progress_store}")
+        
         if session_id not in progress_store:
+            print(f"   ❌ Session not found in progress_store")
+            print(f"   Available sessions: {list(progress_store.keys())[:5]}")  # Show first 5
             raise HTTPException(status_code=404, detail="Session not found")
         
-        preview_data = progress_store[session_id].get("preview_data")
+        session_data = progress_store[session_id]
+        print(f"   - Session data keys: {list(session_data.keys())}")
+        print(f"   - Has preview_data: {'preview_data' in session_data}")
+        
+        preview_data = session_data.get("preview_data")
         
         if not preview_data:
+            print(f"   ❌ preview_data is empty or None")
+            print(f"   Session data: {session_data}")
             raise HTTPException(status_code=404, detail="Preview data not available")
         
+        print(f"   ✅ Returning preview data ({len(str(preview_data))} bytes)")
         return JSONResponse(content=preview_data)
 
 
-@router.get("/download/{session_id}")
-async def download_result(session_id: str):
-    """Download the generated Excel file"""
+# ✅ Get Excel file as base64 (for preview)
+@router.get("/excel/{session_id}")
+async def get_excel_base64(session_id: str):
+    """Get Excel file as base64 for frontend preview/download"""
     with progress_lock:
         if session_id not in progress_store:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -189,24 +200,60 @@ async def download_result(session_id: str):
         excel_path = progress_store[session_id].get("excel_path")
         
         if not excel_path or not os.path.exists(excel_path):
+            raise HTTPException(status_code=404, detail="Excel file not found")
+    
+    # Read Excel file and convert to base64
+    with open(excel_path, 'rb') as f:
+        excel_bytes = f.read()
+        excel_base64 = base64.b64encode(excel_bytes).decode('utf-8')
+    
+    return JSONResponse({
+        "filename": f"extraction_{session_id[:8]}.xlsx",
+        "data": excel_base64,
+        "size": len(excel_bytes)
+    })
+
+
+# ✅ Download Excel file directly
+@router.get("/download/{session_id}")
+async def download_excel(session_id: str):
+    """Download the Excel file directly"""
+    with progress_lock:
+        if session_id not in progress_store:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        excel_path = progress_store[session_id].get("excel_path")
+        filename = progress_store[session_id].get("filename", f"extraction_{session_id[:8]}.xlsx")
+        
+        if not excel_path or not os.path.exists(excel_path):
             raise HTTPException(status_code=404, detail="Result file not found")
     
-    # Return file and schedule cleanup
     return FileResponse(
         excel_path,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=f"extraction_{session_id[:8]}.xlsx",
-        background=BackgroundTasks().add_task(cleanup_session, session_id, excel_path)
+        filename=filename,
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
     )
 
 
-def cleanup_session(session_id: str, excel_path: str):
-    """Cleanup session data and temporary files"""
-    # Delete Excel file
-    if os.path.exists(excel_path):
-        os.remove(excel_path)
-        print(f"🧹 Cleaned up Excel: {excel_path}")
+# ✅ Cleanup endpoint (optional - called after download)
+@router.delete("/cleanup/{session_id}")
+async def cleanup_session_endpoint(session_id: str):
+    """Manually cleanup session data"""
+    with progress_lock:
+        if session_id not in progress_store:
+            return {"message": "Session already cleaned"}
+        
+        excel_path = progress_store[session_id].get("excel_path")
+        
+        # Delete Excel file
+        if excel_path and os.path.exists(excel_path):
+            os.remove(excel_path)
+            print(f"🧹 Cleaned up Excel: {excel_path}")
+        
+        # Remove from store
+        del progress_store[session_id]
     
-    # Delete progress data
-    delete_progress(session_id)
-    print(f"🧹 Cleaned up session: {session_id[:8]}")
+    return {"message": "Session cleaned successfully"}

@@ -79,6 +79,15 @@ def process_guideline_background(
         # Process all chunks
         extraction_result = llm.process_chunks(chunks, custom_prompt)
         
+        # ✅ DEBUG: Check extraction result
+        print(f"\n📊 Extraction result type: {type(extraction_result)}")
+        print(f"📊 Extraction result keys: {list(extraction_result.keys()) if isinstance(extraction_result, dict) else 'Not a dict'}")
+        print(f"📊 Extraction result size: {len(json.dumps(extraction_result))} bytes")
+        
+        if not extraction_result:
+            print("⚠️ WARNING: extraction_result is empty!")
+            extraction_result = {"error": "No data extracted"}
+        
         update_progress(session_id, 85, "✅ LLM processing complete")
         print(f"✅ Extraction completed\n")
 
@@ -105,18 +114,46 @@ def process_guideline_background(
         print(f"📊 Excel file: {excel_path}")
         print(f"{'='*60}\n")
         
-        # ✅ Store result path AND preview data
+        # ✅ Store result with detailed logging
         from utils.progress import progress_store, progress_lock
+        
+        print(f"📥 Storing results for session: {session_id}")
+        print(f"   - Excel path: {excel_path}")
+        print(f"   - Preview data size: {len(json.dumps(extraction_result))} bytes")
+        print(f"   - Filename: extraction_{filename.replace('.pdf', '.xlsx')}")
+        
         with progress_lock:
             if session_id in progress_store:
                 progress_store[session_id]["excel_path"] = excel_path
-                progress_store[session_id]["preview_data"] = extraction_result  # ✅ NEW
+                progress_store[session_id]["preview_data"] = extraction_result
+                progress_store[session_id]["filename"] = f"extraction_{filename.replace('.pdf', '.xlsx')}"
                 progress_store[session_id]["status"] = "completed"
+                
+                # ✅ Verify storage
+                print(f"✅ Stored in progress_store:")
+                print(f"   - Has excel_path: {'excel_path' in progress_store[session_id]}")
+                print(f"   - Has preview_data: {'preview_data' in progress_store[session_id]}")
+                print(f"   - Has filename: {'filename' in progress_store[session_id]}")
+                print(f"   - Status: {progress_store[session_id].get('status')}")
+            else:
+                print(f"❌ ERROR: Session {session_id} not found in progress_store!")
+                # Create entry if missing
+                progress_store[session_id] = {
+                    "progress": 100,
+                    "message": "✅ Processing complete!",
+                    "excel_path": excel_path,
+                    "preview_data": extraction_result,
+                    "filename": f"extraction_{filename.replace('.pdf', '.xlsx')}",
+                    "status": "completed"
+                }
+                print(f"✅ Created new entry in progress_store")
 
     except Exception as e:
         error_msg = str(e)
         print(f"\n{'='*60}")
         print(f"❌ ERROR: {error_msg}")
+        import traceback
+        traceback.print_exc()
         print(f"{'='*60}\n")
         
         update_progress(session_id, 0, f"❌ Error: {error_msg}")
