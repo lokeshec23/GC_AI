@@ -20,7 +20,6 @@ def process_guideline_background(
 ):
     """
     Background task for processing PDF guideline extraction.
-    Simplified version focusing only on rules extraction.
     """
     excel_path = None
     
@@ -106,11 +105,12 @@ def process_guideline_background(
         print(f"📊 Excel file: {excel_path}")
         print(f"{'='*60}\n")
         
-        # Store result path in progress (for download)
+        # ✅ Store result path AND preview data
         from utils.progress import progress_store, progress_lock
         with progress_lock:
             if session_id in progress_store:
                 progress_store[session_id]["excel_path"] = excel_path
+                progress_store[session_id]["preview_data"] = extraction_result  # ✅ NEW
                 progress_store[session_id]["status"] = "completed"
 
     except Exception as e:

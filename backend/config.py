@@ -1,4 +1,3 @@
-
 # config.py
 import os
 from datetime import timedelta
@@ -26,11 +25,16 @@ SUPPORTED_MODELS = {
         "gpt-3.5-turbo"
     ],
     "gemini": [
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-        "gemini-pro"
+        "gemini-2.5-pro",
+        "gemini-2.5-flash-preview-05-20",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-exp"
     ]
 }
+
+# Gemini API Configuration
+GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 # Default Settings
 DEFAULT_TEMPERATURE = 0.7

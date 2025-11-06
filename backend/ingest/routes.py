@@ -2,8 +2,9 @@
 import os
 import uuid
 import tempfile
+import json
 from fastapi import APIRouter, File, UploadFile, Form, BackgroundTasks, HTTPException, Depends
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from ingest.schemas import IngestResponse, ProcessingStatus
 from ingest.processor import process_guideline_background
 from settings.models import get_user_settings
@@ -11,7 +12,6 @@ from settings.routes import get_current_user_id
 from utils.progress import get_progress, delete_progress, progress_store, progress_lock
 from config import SUPPORTED_MODELS
 import asyncio
-import json
 from typing import AsyncGenerator
 
 router = APIRouter(prefix="/ingest", tags=["Ingest Guideline"])
@@ -29,8 +29,7 @@ async def ingest_guideline(
     Upload PDF and extract rules using custom prompt.
     Returns session_id for progress tracking.
     """
-
-     # ✅ Add debug logging
+    
     print(f"📥 Received request:")
     print(f"  - File: {file.filename} ({file.content_type})")
     print(f"  - Provider: {model_provider}")
@@ -162,6 +161,22 @@ async def get_status(session_id: str):
             message=data["message"],
             result_url=f"/ingest/download/{session_id}" if data.get("excel_path") else None
         )
+
+
+# ✅ NEW: Preview endpoint
+@router.get("/preview/{session_id}")
+async def get_preview(session_id: str):
+    """Get JSON preview data for display in UI"""
+    with progress_lock:
+        if session_id not in progress_store:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        preview_data = progress_store[session_id].get("preview_data")
+        
+        if not preview_data:
+            raise HTTPException(status_code=404, detail="Preview data not available")
+        
+        return JSONResponse(content=preview_data)
 
 
 @router.get("/download/{session_id}")

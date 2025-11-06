@@ -77,6 +77,7 @@ export const settingsAPI = {
 };
 
 // ==================== INGEST APIs ====================
+// Add to ingestAPI object
 export const ingestAPI = {
   ingestGuideline: (formData) =>
     api.post("/ingest/guideline", formData, {
@@ -84,6 +85,9 @@ export const ingestAPI = {
     }),
 
   getStatus: (sessionId) => api.get(`/ingest/status/${sessionId}`),
+
+  // ✅ NEW: Get preview data
+  getPreview: (sessionId) => api.get(`/ingest/preview/${sessionId}`),
 
   // Progress stream (EventSource, not axios)
   createProgressStream: (sessionId) => {

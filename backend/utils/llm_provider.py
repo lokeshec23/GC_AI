@@ -1,9 +1,10 @@
 # utils/llm_provider.py
 import json
 import re
+import requests
 from typing import List, Dict, Any
 from openai import OpenAI
-import google.generativeai as genai
+from config import GEMINI_API_BASE_URL
 
 class LLMProvider:
     """Unified LLM provider supporting OpenAI and Gemini"""
@@ -20,6 +21,7 @@ class LLMProvider:
     ):
         self.provider = provider.lower()
         self.model = model
+        self.api_key = api_key
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.top_p = top_p
@@ -28,8 +30,8 @@ class LLMProvider:
         if self.provider == "openai":
             self.client = OpenAI(api_key=api_key)
         elif self.provider == "gemini":
-            genai.configure(api_key=api_key)
-            self.client = genai.GenerativeModel(model)
+            # Gemini uses direct HTTP API
+            self.api_url = f"{GEMINI_API_BASE_URL}/{model}:generateContent?key={api_key}"
         else:
             raise ValueError(f"Unsupported provider: {provider}")
     
@@ -64,26 +66,58 @@ class LLMProvider:
         return response.choices[0].message.content
     
     def _generate_gemini(self, prompt: str) -> str:
-        """Call Gemini API"""
-        generation_config = {
-            "temperature": self.temperature,
-            "max_output_tokens": self.max_tokens,
-            "top_p": self.top_p,
+        """Call Gemini API using direct HTTP request"""
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": prompt
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": self.temperature,
+                "maxOutputTokens": self.max_tokens,
+                "topP": self.top_p,
+            }
         }
         
         if self.stop_sequences:
-            generation_config["stop_sequences"] = self.stop_sequences
+            payload["generationConfig"]["stopSequences"] = self.stop_sequences
         
-        response = self.client.generate_content(
-            prompt,
-            generation_config=generation_config
-        )
-        return response.text
+        try:
+            response = requests.post(
+                self.api_url,
+                headers=headers,
+                json=payload,
+                timeout=120
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            # Extract text from Gemini response format
+            if "candidates" in result and len(result["candidates"]) > 0:
+                candidate = result["candidates"][0]
+                if "content" in candidate and "parts" in candidate["content"]:
+                    parts = candidate["content"]["parts"]
+                    if len(parts) > 0 and "text" in parts[0]:
+                        return parts[0]["text"]
+            
+            raise ValueError("Unexpected Gemini API response format")
+            
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Gemini API request failed: {str(e)}")
     
     def process_chunks(self, chunks: List[str], user_prompt: str) -> dict:
         """
         Process multiple chunks with user's custom prompt and merge results.
-        Similar to your old process_chunks() function.
         """
         final_result = {}
         

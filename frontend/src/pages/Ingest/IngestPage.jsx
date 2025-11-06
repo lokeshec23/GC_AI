@@ -10,6 +10,8 @@ import {
   Alert,
   Space,
   Tag,
+  Table,
+  Collapse,
 } from "antd";
 import {
   PaperClipOutlined,
@@ -18,13 +20,15 @@ import {
   DownloadOutlined,
   ThunderboltOutlined,
   CloseCircleOutlined,
+  EyeOutlined,
 } from "@ant-design/icons";
 import { ingestAPI, settingsAPI } from "../../services/api";
 
 const { TextArea } = Input;
 const { Option } = Select;
+const { Panel } = Collapse;
 
-// ✅ Move default prompt OUTSIDE component
+// ✅ Default prompt
 const DEFAULT_PROMPT = `You are an expert mortgage guideline analyst.
 Extract all rules, eligibility criteria, and conditions from this mortgage guideline document.
 
@@ -56,16 +60,17 @@ const IngestPage = () => {
     openai: [],
     gemini: [],
   });
-  const [selectedProvider, setSelectedProvider] = useState("openai");
-  const fileInputRef = useRef(null); // ✅ Add ref for file input
+  const [selectedProvider, setSelectedProvider] = useState("gemini");
+  const [previewData, setPreviewData] = useState(null); // ✅ NEW
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     fetchSupportedModels();
 
     // Set initial form values
     form.setFieldsValue({
-      model_provider: "openai",
-      model_name: "gpt-4o",
+      model_provider: "gemini",
+      model_name: "gemini-2.5-flash-preview-05-20",
       custom_prompt: DEFAULT_PROMPT,
     });
   }, [form]);
@@ -79,7 +84,6 @@ const IngestPage = () => {
     }
   };
 
-  // ✅ Fixed file handler - use native input
   const handleFileSelect = (event) => {
     const selectedFile = event.target.files[0];
     if (selectedFile) {
@@ -110,13 +114,11 @@ const IngestPage = () => {
       return;
     }
 
-    console.log("Submitting with values:", values);
-    console.log("File:", file);
-
     try {
       setProcessing(true);
       setProgress(0);
       setProgressMessage("Initializing...");
+      setPreviewData(null); // ✅ Reset preview
 
       // Create FormData
       const formData = new FormData();
@@ -124,12 +126,6 @@ const IngestPage = () => {
       formData.append("model_provider", values.model_provider);
       formData.append("model_name", values.model_name);
       formData.append("custom_prompt", values.custom_prompt);
-
-      // Debug: Log FormData contents
-      console.log("FormData contents:");
-      for (let pair of formData.entries()) {
-        console.log(pair[0], pair[1]);
-      }
 
       // Start processing
       const response = await ingestAPI.ingestGuideline(formData);
@@ -150,6 +146,9 @@ const IngestPage = () => {
           eventSource.close();
           setProcessing(false);
           message.success("Processing complete!");
+
+          // ✅ Fetch preview data
+          fetchPreviewData(session_id);
         }
       };
 
@@ -162,8 +161,17 @@ const IngestPage = () => {
     } catch (error) {
       setProcessing(false);
       console.error("Submit error:", error);
-      console.error("Error response:", error.response?.data);
       message.error(error.response?.data?.detail || "Processing failed");
+    }
+  };
+
+  // ✅ NEW: Fetch preview data
+  const fetchPreviewData = async (sid) => {
+    try {
+      const response = await ingestAPI.getPreview(sid);
+      setPreviewData(response.data);
+    } catch (error) {
+      console.error("Failed to fetch preview:", error);
     }
   };
 
@@ -172,6 +180,66 @@ const IngestPage = () => {
       ingestAPI.downloadResult(sessionId);
     }
   };
+
+  // ✅ NEW: Convert JSON to table data
+  const convertToTableData = (data) => {
+    const rows = [];
+    let rowId = 0;
+
+    const processObject = (obj, sectionName = "") => {
+      for (const [key, value] of Object.entries(obj)) {
+        if (key === "summary") {
+          rows.push({
+            key: rowId++,
+            section: sectionName,
+            subsection: "Summary",
+            details: value,
+            isHeader: true,
+          });
+        } else if (typeof value === "string") {
+          rows.push({
+            key: rowId++,
+            section: sectionName,
+            subsection: key,
+            details: value,
+            isHeader: false,
+          });
+        } else if (typeof value === "object" && value !== null) {
+          processObject(value, key);
+        }
+      }
+    };
+
+    processObject(data);
+    return rows;
+  };
+
+  const tableColumns = [
+    {
+      title: "Section",
+      dataIndex: "section",
+      key: "section",
+      width: "20%",
+      render: (text, record) => (
+        <span className={record.isHeader ? "font-bold" : ""}>{text}</span>
+      ),
+    },
+    {
+      title: "Subsection/Rule",
+      dataIndex: "subsection",
+      key: "subsection",
+      width: "25%",
+      render: (text, record) => (
+        <span className={record.isHeader ? "font-bold" : ""}>{text}</span>
+      ),
+    },
+    {
+      title: "Details",
+      dataIndex: "details",
+      key: "details",
+      width: "55%",
+    },
+  ];
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -336,26 +404,34 @@ const IngestPage = () => {
         </Card>
       )}
 
-      {/* Download Section */}
-      {!processing && sessionId && progress === 100 && (
-        <Card className="mb-6">
-          <Alert
-            message="✅ Processing Complete!"
-            description="Your extraction is ready. Click below to download the Excel file."
-            type="success"
-            showIcon
-            className="mb-4"
+      {/* ✅ NEW: Preview + Download Section */}
+      {!processing && sessionId && progress === 100 && previewData && (
+        <Card
+          title={
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <EyeOutlined />
+                Excel Preview
+              </span>
+              <Button
+                type="primary"
+                icon={<DownloadOutlined />}
+                onClick={handleDownload}
+              >
+                Download Excel
+              </Button>
+            </div>
+          }
+          className="mb-6"
+        >
+          <Table
+            columns={tableColumns}
+            dataSource={convertToTableData(previewData)}
+            pagination={{ pageSize: 20 }}
+            scroll={{ y: 400 }}
+            size="small"
+            bordered
           />
-
-          <Button
-            type="primary"
-            icon={<DownloadOutlined />}
-            size="large"
-            onClick={handleDownload}
-            block
-          >
-            Download Excel File
-          </Button>
         </Card>
       )}
     </div>
