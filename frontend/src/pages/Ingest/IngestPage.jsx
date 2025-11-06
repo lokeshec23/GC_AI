@@ -10,7 +10,8 @@ import {
   Space,
   Tag,
   Table,
-  Divider,
+  Modal,
+  Spin,
 } from "antd";
 import {
   PaperClipOutlined,
@@ -21,13 +22,14 @@ import {
   CloseCircleOutlined,
   EyeOutlined,
   FileExcelOutlined,
+  LoadingOutlined,
 } from "@ant-design/icons";
 import { ingestAPI, settingsAPI } from "../../services/api";
 
 const { TextArea } = Input;
 const { Option } = Select;
 
-// ✅ Default prompt
+// ✅ Default prompt for table format
 const DEFAULT_PROMPT = `You are an expert U.S. mortgage underwriting analyst. 
 You will be given text from a mortgage guideline document.
 Your job is to extract and structure it into a clean table format.
@@ -68,7 +70,11 @@ const IngestPage = () => {
   });
   const [selectedProvider, setSelectedProvider] = useState("gemini");
   const [previewData, setPreviewData] = useState(null);
-  const [excelReady, setExcelReady] = useState(false);
+
+  // ✅ Modal states
+  const [processingModalVisible, setProcessingModalVisible] = useState(false);
+  const [previewModalVisible, setPreviewModalVisible] = useState(false);
+
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -126,7 +132,7 @@ const IngestPage = () => {
       setProgress(0);
       setProgressMessage("Initializing...");
       setPreviewData(null);
-      setExcelReady(false);
+      setProcessingModalVisible(true); // ✅ Show processing modal
 
       // Create FormData
       const formData = new FormData();
@@ -153,11 +159,12 @@ const IngestPage = () => {
         if (data.progress >= 100) {
           eventSource.close();
           setProcessing(false);
-          message.success("Processing complete!");
+          setProcessingModalVisible(false); // ✅ Hide processing modal
 
-          // ✅ Fetch preview data and mark Excel as ready
+          // Fetch preview data
           fetchPreviewData(session_id);
-          setExcelReady(true);
+
+          message.success("Processing complete!");
         }
       };
 
@@ -165,20 +172,23 @@ const IngestPage = () => {
         console.error("SSE Error:", error);
         eventSource.close();
         setProcessing(false);
+        setProcessingModalVisible(false);
         message.error("Connection lost. Please check status manually.");
       };
     } catch (error) {
       setProcessing(false);
+      setProcessingModalVisible(false);
       console.error("Submit error:", error);
       message.error(error.response?.data?.detail || "Processing failed");
     }
   };
 
-  // ✅ Fetch preview data
+  // ✅ Fetch preview data and show modal
   const fetchPreviewData = async (sid) => {
     try {
       const response = await ingestAPI.getPreview(sid);
       setPreviewData(response.data);
+      setPreviewModalVisible(true); // ✅ Show preview modal
     } catch (error) {
       console.error("Failed to fetch preview:", error);
       message.error("Failed to load preview data");
@@ -188,84 +198,102 @@ const IngestPage = () => {
   // ✅ Handle Excel download
   const handleDownload = () => {
     if (sessionId) {
-      message.loading("Preparing download...", 0.5);
+      message.success("Downloading Excel file...");
       ingestAPI.downloadExcel(sessionId);
     }
   };
 
-  // ✅ Convert JSON to table data
+  // ✅ Close preview modal
+  const handleClosePreview = () => {
+    setPreviewModalVisible(false);
+    setPreviewData(null);
+    setSessionId(null);
+    setFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // ✅ Convert preview data to table rows
   const convertToTableData = (data) => {
+    if (!data || typeof data !== "object") return [];
+
     const rows = [];
     let rowId = 0;
 
-    const processObject = (obj, sectionName = "") => {
-      for (const [key, value] of Object.entries(obj)) {
-        if (key === "summary") {
-          rows.push({
-            key: rowId++,
-            section: sectionName,
-            subsection: "Summary",
-            details: value,
-            isHeader: true,
-          });
-        } else if (typeof value === "string") {
-          rows.push({
-            key: rowId++,
-            section: sectionName,
-            subsection: key,
-            details: value,
-            isHeader: false,
-          });
-        } else if (
-          typeof value === "object" &&
-          value !== null &&
-          !Array.isArray(value)
-        ) {
-          processObject(value, key);
-        } else if (Array.isArray(value)) {
-          rows.push({
-            key: rowId++,
-            section: sectionName,
-            subsection: key,
-            details: JSON.stringify(value, null, 2),
-            isHeader: false,
-          });
-        }
-      }
-    };
+    // Handle array format (from table parser)
+    if (Array.isArray(data)) {
+      return data.map((item, idx) => ({
+        key: idx,
+        major_section: item.major_section || "",
+        subsection: item.subsection || "",
+        summary: item.summary || "",
+      }));
+    }
 
-    processObject(data);
+    // Handle object format
+    for (const [section, content] of Object.entries(data)) {
+      if (typeof content === "object" && content !== null) {
+        // Add section header
+        rows.push({
+          key: rowId++,
+          major_section: section,
+          subsection: "",
+          summary: content.summary || "",
+        });
+
+        // Add subsections
+        for (const [key, value] of Object.entries(content)) {
+          if (key !== "summary") {
+            rows.push({
+              key: rowId++,
+              major_section: "",
+              subsection: key,
+              summary:
+                typeof value === "string" ? value : JSON.stringify(value),
+            });
+          }
+        }
+      } else {
+        rows.push({
+          key: rowId++,
+          major_section: section,
+          subsection: "",
+          summary: String(content),
+        });
+      }
+    }
+
     return rows;
   };
 
   const tableColumns = [
     {
-      title: "Section",
-      dataIndex: "section",
-      key: "section",
-      width: "20%",
+      title: "Major Section Title",
+      dataIndex: "major_section",
+      key: "major_section",
+      width: "30%",
       render: (text, record) => (
-        <span className={record.isHeader ? "font-bold text-blue-700" : ""}>
+        <span
+          className={
+            text && !record.subsection ? "font-bold text-blue-700" : ""
+          }
+        >
           {text}
         </span>
       ),
     },
     {
-      title: "Subsection/Rule",
+      title: "Subsection Title",
       dataIndex: "subsection",
       key: "subsection",
-      width: "25%",
-      render: (text, record) => (
-        <span className={record.isHeader ? "font-bold text-blue-700" : ""}>
-          {text}
-        </span>
-      ),
+      width: "30%",
     },
     {
-      title: "Details",
-      dataIndex: "details",
-      key: "details",
-      width: "55%",
+      title: "Summary / Key Requirements",
+      dataIndex: "summary",
+      key: "summary",
+      width: "40%",
       render: (text) => <div className="whitespace-pre-wrap">{text}</div>,
     },
   ];
@@ -363,6 +391,7 @@ const IngestPage = () => {
                   paddingBottom: "60px",
                 }}
                 disabled={processing}
+                value={DEFAULT_PROMPT}
               />
 
               {/* File Upload + Send Button Container */}
@@ -415,9 +444,23 @@ const IngestPage = () => {
         </Card>
       </Form>
 
-      {/* Progress Section */}
-      {processing && (
-        <Card title="⚡ Processing Status" className="mb-6">
+      {/* ✅ Processing Modal */}
+      <Modal
+        title={
+          <div className="flex items-center gap-2">
+            <Spin
+              indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />}
+            />
+            <span className="text-lg font-semibold">Processing Guideline</span>
+          </div>
+        }
+        open={processingModalVisible}
+        footer={null}
+        closable={false}
+        centered
+        width={600}
+      >
+        <div className="py-6">
           <Progress
             percent={progress}
             status={progress === 100 ? "success" : "active"}
@@ -425,37 +468,64 @@ const IngestPage = () => {
               "0%": "#108ee9",
               "100%": "#87d068",
             }}
+            strokeWidth={12}
           />
-          <p className="mt-4 text-gray-600">{progressMessage}</p>
-        </Card>
-      )}
+          <div className="mt-6 text-center">
+            <p className="text-gray-600 text-base">{progressMessage}</p>
+          </div>
 
-      {/* ✅ Excel Preview Section */}
-      {!processing && excelReady && previewData && (
-        <Card
-          className="mb-6"
-          title={
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-lg">
-                <FileExcelOutlined className="text-green-600" />
-                <strong>Extraction Results</strong>
-              </span>
-              <Button
-                type="primary"
-                icon={<DownloadOutlined />}
-                size="large"
-                onClick={handleDownload}
-              >
-                Download Excel
-              </Button>
+          {file && (
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <FileTextOutlined />
+                <span>
+                  Processing: <strong>{file.name}</strong>
+                </span>
+              </div>
             </div>
-          }
-        >
-          <Divider orientation="left">
-            <EyeOutlined /> Preview
-          </Divider>
+          )}
+        </div>
+      </Modal>
 
-          <div className="bg-gray-50 p-4 rounded-lg">
+      {/* ✅ Preview Modal */}
+      <Modal
+        title={
+          <div className="flex items-center gap-2 text-lg">
+            <FileExcelOutlined className="text-green-600" />
+            <span className="font-semibold">Extraction Results</span>
+          </div>
+        }
+        open={previewModalVisible}
+        onCancel={handleClosePreview}
+        width={1200}
+        centered
+        footer={[
+          <Button key="close" onClick={handleClosePreview}>
+            Close
+          </Button>,
+          <Button
+            key="download"
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={handleDownload}
+            size="large"
+          >
+            Download Excel
+          </Button>,
+        ]}
+      >
+        {previewData ? (
+          <div className="max-h-[600px] overflow-auto">
+            <div className="mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
+              <p className="text-sm text-green-800 flex items-center gap-2">
+                <EyeOutlined />
+                <span>
+                  Preview of extracted data. Click{" "}
+                  <strong>Download Excel</strong> to save the file.
+                </span>
+              </p>
+            </div>
+
             <Table
               columns={tableColumns}
               dataSource={convertToTableData(previewData)}
@@ -464,29 +534,23 @@ const IngestPage = () => {
                 showSizeChanger: true,
                 showTotal: (total) => `Total ${total} rows`,
               }}
-              scroll={{ y: 500, x: "max-content" }}
+              scroll={{ y: 450 }}
               size="small"
               bordered
-              className="shadow-sm"
-              rowClassName={(record) => (record.isHeader ? "bg-blue-50" : "")}
+              rowClassName={(record) =>
+                record.major_section && !record.subsection
+                  ? "bg-blue-50 font-semibold"
+                  : ""
+              }
             />
           </div>
-
-          <Divider />
-
-          <div className="flex justify-center">
-            <Button
-              type="primary"
-              icon={<DownloadOutlined />}
-              size="large"
-              onClick={handleDownload}
-              className="px-8"
-            >
-              Download Excel File
-            </Button>
+        ) : (
+          <div className="text-center py-12">
+            <Spin size="large" />
+            <p className="mt-4 text-gray-500">Loading preview...</p>
           </div>
-        </Card>
-      )}
+        )}
+      </Modal>
     </div>
   );
 };
