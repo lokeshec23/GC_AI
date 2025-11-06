@@ -1,3 +1,4 @@
+import { Drawer } from "antd";
 import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
@@ -343,7 +344,6 @@ const IngestPage = () => {
           Upload a PDF guideline and extract rules using a custom prompt
         </p>
       </div>
-
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
         {/* Model Selection */}
         <Card className="mb-6">
@@ -500,7 +500,6 @@ const IngestPage = () => {
           </div>
         </Card>
       </Form>
-
       {/* ✅ Processing Modal */}
       <Modal
         title={
@@ -543,76 +542,80 @@ const IngestPage = () => {
           )}
         </div>
       </Modal>
-
-      {/* ✅ Preview Modal - Fixed Pagination */}
-      <Modal
+      {/* ✅ Fullscreen Preview Modal */}
+      {/* ✅ Full-height Drawer */}
+      <Drawer
         title={
-          <div className="flex items-center gap-2 text-lg">
-            <FileExcelOutlined className="text-green-600" />
-            <span className="font-semibold">Extraction Results</span>
+          <div className="flex items-center gap-2">
+            <FileExcelOutlined className="text-green-600 text-xl" />
+            <span className="font-semibold text-lg">Extraction Results</span>
+            <Tag color="blue">
+              {convertToTableData(previewData).length} rows
+            </Tag>
           </div>
         }
+        placement="right"
+        width="95vw"
         open={previewModalVisible}
-        onCancel={handleClosePreview}
-        width={1400}
-        centered
-        footer={[
-          <Button key="close" onClick={handleClosePreview} size="large">
-            Close
-          </Button>,
+        onClose={handleClosePreview}
+        extra={
           <Button
-            key="download"
             type="primary"
             icon={<DownloadOutlined />}
             onClick={handleDownload}
             size="large"
           >
             Download Excel
-          </Button>,
-        ]}
-        bodyStyle={{ padding: "24px" }}
+          </Button>
+        }
+        bodyStyle={{
+          padding: "24px",
+          height: "calc(100vh - 108px)",
+          overflow: "hidden",
+        }}
       >
         {previewData ? (
-          <div>
-            <div className="mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
+          <div className="h-full flex flex-col">
+            <div className="mb-4 p-3 bg-green-50 rounded-lg border border-green-200 flex-shrink-0">
               <p className="text-sm text-green-800 flex items-center gap-2">
                 <EyeOutlined />
-                <span>
-                  Preview of extracted data. Click{" "}
-                  <strong>Download Excel</strong> to save the file.
-                </span>
+                <span>Preview of extracted data. Scroll to view all rows.</span>
               </p>
             </div>
 
-            {/* ✅ Fixed Table with proper pagination */}
-            <Table
-              columns={tableColumns}
-              dataSource={convertToTableData(previewData)}
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                pageSizeOptions: ["10", "20", "50", "100"],
-                showTotal: (total, range) =>
-                  `${range[0]}-${range[1]} of ${total} rows`,
-              }}
-              scroll={{ x: "max-content" }}
-              size="small"
-              bordered
-              rowClassName={(record) =>
-                record.major_section && !record.subsection
-                  ? "bg-blue-50 font-semibold"
-                  : ""
-              }
-            />
+            <div className="flex-1 overflow-hidden">
+              <Table
+                columns={tableColumns}
+                dataSource={convertToTableData(previewData)}
+                pagination={{
+                  pageSize: 100,
+                  showSizeChanger: true,
+                  showQuickJumper: true,
+                  pageSizeOptions: ["50", "100", "200", "500"],
+                  showTotal: (total, range) =>
+                    `${range[0]}-${range[1]} of ${total} rows`,
+                }}
+                scroll={{
+                  x: "max-content",
+                  y: "calc(100vh - 280px)",
+                }}
+                size="small"
+                bordered
+                sticky
+                rowClassName={(record) =>
+                  record.major_section && !record.subsection
+                    ? "bg-blue-50 font-semibold"
+                    : ""
+                }
+              />
+            </div>
           </div>
         ) : (
-          <div className="text-center py-12">
-            <Spin size="large" />
-            <p className="mt-4 text-gray-500">Loading preview...</p>
+          <div className="flex items-center justify-center h-full">
+            <Spin size="large" tip="Loading preview..." />
           </div>
         )}
-      </Modal>
+      </Drawer>
     </div>
   );
 };
