@@ -28,25 +28,32 @@ const { TextArea } = Input;
 const { Option } = Select;
 
 // ✅ Default prompt
-const DEFAULT_PROMPT = `You are an expert mortgage guideline analyst.
-Extract all rules, eligibility criteria, and conditions from this mortgage guideline document.
+const DEFAULT_PROMPT = `You are an expert U.S. mortgage underwriting analyst. 
+You will be given text from a mortgage guideline document.
+Your job is to extract and structure it into a clean table format.
 
-### INSTRUCTIONS
-1. Identify major sections and subsections
-2. For each major section, provide a brief summary
-3. Extract specific rules, conditions, and requirements
-4. Maintain the hierarchical structure
-5. Output in JSON format
+INSTRUCTIONS:
+1. Identify major sections and subsections based on titles, numbering, or formatting.
+2. For each major section, write a short 2–3 line summary.
+3. For each subsection, summarize the rules, requirements, or eligibility criteria in 2–3 lines.
+4. Keep all section and subsection titles exactly as written in the original text.
+5. Do not add, guess, or infer information not directly present.
+6. Maintain the original hierarchy and document order.
 
-### OUTPUT FORMAT
-{
-  "Section Title": {
-    "summary": "Brief description of this section",
-    "Subsection Title": "Key rules and conditions"
-  }
-}
+OUTPUT FORMAT:
+Provide a markdown table with these columns:
 
-Only extract information explicitly stated in the document.`;
+| Major Section Title | Subsection Title | Summary / Key Requirements |
+|---------------------|------------------|----------------------------|
+| (Section name) | (Subsection or blank) | (2-3 sentence summary) |
+
+Example:
+| Major Section Title | Subsection Title | Summary / Key Requirements |
+|---------------------|------------------|----------------------------|
+| 301. Non-U.S. Citizen Eligibility | | This section covers eligibility requirements for non-U.S. citizens applying for mortgage loans. |
+| 301. Non-U.S. Citizen Eligibility | Work Permit Requirements | Borrower must have valid work permit or visa. Minimum 3 years of work history required. |
+
+Output ONLY the table. No additional text before or after.`;
 
 const IngestPage = () => {
   const [form] = Form.useForm();

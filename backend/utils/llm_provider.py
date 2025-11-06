@@ -11,7 +11,7 @@ class LLMProvider:
     
     def __init__(
         self,
-        provider: str,  # "openai" or "gemini"
+        provider: str,
         api_key: str,
         model: str,
         temperature: float = 0.7,
@@ -30,21 +30,9 @@ class LLMProvider:
         if self.provider == "openai":
             self.client = OpenAI(api_key=api_key)
         elif self.provider == "gemini":
-            # Gemini uses direct HTTP API
             self.api_url = f"{GEMINI_API_BASE_URL}/{model}:generateContent?key={api_key}"
         else:
             raise ValueError(f"Unsupported provider: {provider}")
-    
-    def _clean_json_response(self, content: str) -> str:
-        """Remove markdown fences and clean JSON response"""
-        if not content:
-            return "{}"
-        
-        cleaned = content.strip()
-        cleaned = re.sub(r'^```json\s*', '', cleaned)
-        cleaned = re.sub(r'^```\s*', '', cleaned)
-        cleaned = re.sub(r'\s*```$', '', cleaned)
-        return cleaned.strip()
     
     def generate(self, prompt: str) -> str:
         """Generate response from LLM"""
@@ -66,7 +54,7 @@ class LLMProvider:
         return response.choices[0].message.content
     
     def _generate_gemini(self, prompt: str) -> str:
-        """Call Gemini API using direct HTTP request"""
+        """Call Gemini API - Fixed version with better error handling"""
         headers = {
             "Content-Type": "application/json"
         }
@@ -88,88 +76,72 @@ class LLMProvider:
             }
         }
         
+        # Add stop sequences if provided
         if self.stop_sequences:
             payload["generationConfig"]["stopSequences"] = self.stop_sequences
         
         try:
+            print(f"📤 Calling Gemini API: {self.model}")
+            
             response = requests.post(
                 self.api_url,
                 headers=headers,
                 json=payload,
                 timeout=120
             )
-            response.raise_for_status()
+            
+            print(f"📥 Response status: {response.status_code}")
+            
+            # Check for HTTP errors
+            if response.status_code != 200:
+                print(f"❌ HTTP Error {response.status_code}")
+                print(f"Response body: {response.text}")
+                raise Exception(f"Gemini API HTTP {response.status_code}: {response.text}")
             
             result = response.json()
             
-            # Extract text from Gemini response format
+            # Debug: Print response structure
+            print(f"📊 Response keys: {list(result.keys())}")
+            
+            # Handle different response formats
             if "candidates" in result and len(result["candidates"]) > 0:
                 candidate = result["candidates"][0]
+                
+                # Check for safety blocks
+                if "finishReason" in candidate:
+                    finish_reason = candidate["finishReason"]
+                    if finish_reason != "STOP":
+                        print(f"⚠️ Unexpected finish reason: {finish_reason}")
+                        if "safetyRatings" in candidate:
+                            print(f"Safety ratings: {candidate['safetyRatings']}")
+                
+                # Extract text
                 if "content" in candidate and "parts" in candidate["content"]:
                     parts = candidate["content"]["parts"]
                     if len(parts) > 0 and "text" in parts[0]:
-                        return parts[0]["text"]
+                        text_response = parts[0]["text"]
+                        print(f"✅ Got response: {len(text_response)} characters")
+                        return text_response
+                    else:
+                        print(f"❌ No text in parts: {parts}")
+                else:
+                    print(f"❌ No content/parts in candidate: {candidate.keys()}")
             
-            raise ValueError("Unexpected Gemini API response format")
+            # Check for error in response
+            if "error" in result:
+                error_msg = result["error"].get("message", "Unknown error")
+                print(f"❌ API Error: {error_msg}")
+                raise Exception(f"Gemini API Error: {error_msg}")
+            
+            # If we get here, response format is unexpected
+            print(f"❌ Unexpected response format")
+            print(f"Full response: {json.dumps(result, indent=2)}")
+            raise ValueError(f"Unexpected Gemini API response format. Response: {result}")
             
         except requests.exceptions.RequestException as e:
+            print(f"❌ Request failed: {str(e)}")
             raise Exception(f"Gemini API request failed: {str(e)}")
-    
-    def process_chunks(self, chunks: List[str], user_prompt: str) -> dict:
-        """
-        Process multiple chunks with user's custom prompt and merge results.
-        """
-        final_result = {}
-        
-        for idx, chunk in enumerate(chunks):
-            print(f"Processing chunk {idx+1}/{len(chunks)}...")
-            
-            # Format the prompt with the chunk
-            full_prompt = f"{user_prompt}\n\n### TEXT TO PROCESS\n{chunk}"
-            
-            # Generate response
-            response_content = self.generate(full_prompt)
-            
-            # ✅ DEBUG: Log response
-            print(f"   Response length: {len(response_content)} chars")
-            print(f"   Response preview: {response_content[:200]}...")
-            
-            # Parse JSON response
-            try:
-                chunk_result = json.loads(response_content)
-                print(f"   ✅ Parsed JSON successfully")
-            except json.JSONDecodeError:
-                cleaned = self._clean_json_response(response_content)
-                try:
-                    chunk_result = json.loads(cleaned)
-                    print(f"   ✅ Parsed cleaned JSON successfully")
-                except json.JSONDecodeError:
-                    print(f"   ⚠️ Failed to parse JSON for chunk {idx+1}, skipping...")
-                    print(f"   Raw response: {response_content[:500]}")
-                    continue
-            
-            # ✅ DEBUG: Log chunk result
-            print(f"   Chunk result keys: {list(chunk_result.keys())}")
-            
-            # Merge results
-            for key, value in chunk_result.items():
-                if key not in final_result:
-                    final_result[key] = value
-                else:
-                    if isinstance(value, dict) and isinstance(final_result[key], dict):
-                        final_result[key].update(value)
-                    elif isinstance(value, list) and isinstance(final_result[key], list):
-                        final_result[key].extend(value)
-                    else:
-                        final_result[key] = value
-        
-        # ✅ DEBUG: Final result summary
-        print(f"\n✅ Merged final result:")
-        print(f"   Total keys: {len(final_result)}")
-        print(f"   Keys: {list(final_result.keys())}")
-        print(f"   Total size: {len(json.dumps(final_result))} bytes")
-        
-        if not final_result:
-            print(f"   ⚠️ WARNING: final_result is empty!")
-        
-        return final_result
+        except json.JSONDecodeError as e:
+            print(f"❌ Failed to parse JSON response: {str(e)}")
+            print(f"Raw response: {response.text}")
+            raise Exception(f"Failed to parse Gemini response as JSON: {str(e)}")
