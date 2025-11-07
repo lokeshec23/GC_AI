@@ -495,22 +495,33 @@ const IngestPage = () => {
           </div>
         }
         placement="right"
-        width="95vw"
+        width="100vw"
         open={previewModalVisible}
-        onClose={handleClosePreview}
+        onClose={null}
+        maskClosable={false}
+        closable={false}
         extra={
-          <Button
-            type="primary"
-            icon={<DownloadOutlined />}
-            onClick={handleDownload}
-            size="large"
-          >
-            Download Excel
-          </Button>
+          <Space>
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={handleDownload}
+              size="large"
+            >
+              Download Excel
+            </Button>
+            <Button
+              icon={<CloseCircleOutlined />}
+              onClick={handleClosePreview}
+              size="large"
+            >
+              Close
+            </Button>
+          </Space>
         }
         bodyStyle={{
           padding: "24px",
-          height: "calc(100vh - 108px)",
+          height: "100vh",
           overflow: "hidden",
         }}
       >
@@ -523,7 +534,7 @@ const IngestPage = () => {
               </p>
             </div> */}
 
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-auto">
               <Table
                 columns={tableColumns}
                 dataSource={convertToTableData(previewData)}
@@ -537,7 +548,6 @@ const IngestPage = () => {
                 }}
                 scroll={{
                   x: "max-content",
-                  y: "calc(100vh - 280px)",
                 }}
                 size="small"
                 bordered

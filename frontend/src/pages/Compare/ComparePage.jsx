@@ -631,33 +631,40 @@ const ComparePage = () => {
       {/* Preview Modal */}
       <Modal
         title={
-          <div className="flex items-center gap-2 text-lg">
-            <SwapOutlined className="text-purple-600" />
-            <span className="font-semibold">Comparison Results</span>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2 text-lg">
+              <SwapOutlined className="text-purple-600" />
+              <span className="font-semibold">Comparison Results</span>
+            </div>
+            <Space>
+              <Button
+                type="primary"
+                icon={<DownloadOutlined />}
+                onClick={handleDownload}
+                size="large"
+              >
+                Download Comparison Excel
+              </Button>
+              <Button
+                icon={<CloseCircleOutlined />}
+                onClick={handleClosePreview}
+                size="large"
+              >
+                Close
+              </Button>
+            </Space>
           </div>
         }
         open={previewModalVisible}
-        onCancel={handleClosePreview}
-        width="95vw"
-        style={{ top: 20, maxWidth: "1800px" }}
-        centered={false}
-        footer={[
-          <Button key="close" onClick={handleClosePreview} size="large">
-            Close
-          </Button>,
-          <Button
-            key="download"
-            type="primary"
-            icon={<DownloadOutlined />}
-            onClick={handleDownload}
-            size="large"
-          >
-            Download Comparison Excel
-          </Button>,
-        ]}
+        width="100vw"
+        style={{ top: 0, padding: 0 }}
+        onCancel={null}
+        maskClosable={false}
+        closable={false}
+        footer={null}
         bodyStyle={{
           padding: "24px",
-          maxHeight: "calc(100vh - 200px)",
+          height: "calc(100vh - 55px)",
           overflowY: "auto",
         }}
       >
