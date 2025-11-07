@@ -1,4 +1,3 @@
-import { Drawer } from "antd";
 import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
@@ -14,6 +13,7 @@ import {
   Modal,
   Spin,
   Tooltip,
+  Drawer,
 } from "antd";
 import {
   PaperClipOutlined,
@@ -32,8 +32,6 @@ import { ingestAPI, settingsAPI } from "../../services/api";
 const { TextArea } = Input;
 const { Option } = Select;
 
-// ✅ Default prompt as constant
-// ✅ Updated prompt - Request JSON format
 const DEFAULT_PROMPT = `You are an expert U.S. mortgage underwriting analyst.
 You will be given text from a mortgage guideline document.
 Your job is to extract and structure it into clean, valid JSON.
@@ -63,11 +61,6 @@ Example:
     "major_section": "301. Non-U.S. Citizen Eligibility",
     "subsection": "Work Permit Requirements",
     "summary": "Borrower must have valid work permit or visa. Minimum 3 years of work history required."
-  },
-  {
-    "major_section": "302. Income Verification",
-    "subsection": "",
-    "summary": "Guidelines for verifying borrower income from various sources."
   }
 ]
 
@@ -89,13 +82,9 @@ const IngestPage = () => {
     openai: [],
     gemini: [],
   });
-  const [selectedProvider, setSelectedProvider] = useState("gemini");
+  const [selectedProvider, setSelectedProvider] = useState("openai");
   const [previewData, setPreviewData] = useState(null);
-
-  // ✅ State for prompt (allows user to edit)
   const [promptValue, setPromptValue] = useState(DEFAULT_PROMPT);
-
-  // ✅ Modal states
   const [processingModalVisible, setProcessingModalVisible] = useState(false);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
 
@@ -104,14 +93,12 @@ const IngestPage = () => {
   useEffect(() => {
     fetchSupportedModels();
 
-    // ✅ Set initial form values including prompt
     form.setFieldsValue({
-      model_provider: "gemini",
-      model_name: "gemini-2.5-flash-preview-05-20",
+      model_provider: "openai",
+      model_name: "gpt-4o",
       custom_prompt: DEFAULT_PROMPT,
     });
 
-    // ✅ Set prompt state
     setPromptValue(DEFAULT_PROMPT);
   }, []);
 
@@ -148,14 +135,12 @@ const IngestPage = () => {
     fileInputRef.current?.click();
   };
 
-  // ✅ Reset prompt to default
   const handleResetPrompt = () => {
     setPromptValue(DEFAULT_PROMPT);
     form.setFieldsValue({ custom_prompt: DEFAULT_PROMPT });
     message.success("Prompt reset to default");
   };
 
-  // ✅ Handle prompt change
   const handlePromptChange = (e) => {
     setPromptValue(e.target.value);
   };
@@ -166,7 +151,6 @@ const IngestPage = () => {
       return;
     }
 
-    // ✅ Use current prompt value (user's custom or default)
     const currentPrompt = promptValue.trim();
 
     if (!currentPrompt) {
@@ -181,26 +165,18 @@ const IngestPage = () => {
       setPreviewData(null);
       setProcessingModalVisible(true);
 
-      // Create FormData
       const formData = new FormData();
       formData.append("file", file);
       formData.append("model_provider", values.model_provider);
       formData.append("model_name", values.model_name);
-      formData.append("custom_prompt", currentPrompt); // ✅ Use current prompt
+      formData.append("custom_prompt", currentPrompt);
 
-      console.log(
-        "Submitting with prompt:",
-        currentPrompt.substring(0, 100) + "..."
-      );
-
-      // Start processing
       const response = await ingestAPI.ingestGuideline(formData);
       const { session_id } = response.data;
       setSessionId(session_id);
 
       message.success("Processing started!");
 
-      // Connect to progress stream
       const eventSource = ingestAPI.createProgressStream(session_id);
 
       eventSource.onmessage = (event) => {
@@ -213,7 +189,6 @@ const IngestPage = () => {
           setProcessing(false);
           setProcessingModalVisible(false);
 
-          // Fetch preview data
           fetchPreviewData(session_id);
 
           message.success("Processing complete!");
@@ -235,11 +210,9 @@ const IngestPage = () => {
     }
   };
 
-  // ✅ Fetch preview data and show modal
   const fetchPreviewData = async (sid) => {
     try {
       const response = await ingestAPI.getPreview(sid);
-      console.log("Preview data received:", response.data);
       setPreviewData(response.data);
       setPreviewModalVisible(true);
     } catch (error) {
@@ -248,7 +221,6 @@ const IngestPage = () => {
     }
   };
 
-  // ✅ Handle Excel download
   const handleDownload = () => {
     if (sessionId) {
       message.success("Downloading Excel file...");
@@ -256,50 +228,24 @@ const IngestPage = () => {
     }
   };
 
-  // ✅ Close preview modal
   const handleClosePreview = () => {
     setPreviewModalVisible(false);
     setPreviewData(null);
     setSessionId(null);
   };
 
-  // ✅ Convert preview data to table rows
-  // ✅ Simplified - data is already in correct format
   const convertToTableData = (data) => {
-    console.log(
-      "Preview data type:",
-      typeof data,
-      "IsArray:",
-      Array.isArray(data)
-    );
-
-    if (!data) {
-      console.log("No preview data");
+    if (!data || !Array.isArray(data)) {
+      console.log("Invalid preview data:", data);
       return [];
     }
 
-    // ✅ Data is already array of objects from backend
-    if (Array.isArray(data)) {
-      console.log(`Converting ${data.length} rows to table format`);
-
-      return data.map((item, idx) => ({
-        key: idx,
-        major_section: item.major_section || "",
-        subsection: item.subsection || "",
-        summary: item.summary || "",
-      }));
-    }
-
-    // Fallback for old format (shouldn't happen with new backend)
-    console.warn("Unexpected data format, attempting to convert:", data);
-    return [
-      {
-        key: 0,
-        major_section: "Error",
-        subsection: "",
-        summary: "Unexpected data format received",
-      },
-    ];
+    return data.map((item, idx) => ({
+      key: idx,
+      major_section: item.major_section || "",
+      subsection: item.subsection || "",
+      summary: item.summary || "",
+    }));
   };
 
   const tableColumns = [
@@ -344,6 +290,7 @@ const IngestPage = () => {
           Upload a PDF guideline and extract rules using a custom prompt
         </p>
       </div>
+
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
         {/* Model Selection */}
         <Card className="mb-6">
@@ -398,7 +345,7 @@ const IngestPage = () => {
           </div>
         </Card>
 
-        {/* ChatGPT-Style Prompt Box */}
+        {/* Prompt Box */}
         <Card
           className="mb-6"
           title={
@@ -424,7 +371,6 @@ const IngestPage = () => {
             className="mb-0"
           >
             <div className="relative">
-              {/* Hidden File Input */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -434,11 +380,10 @@ const IngestPage = () => {
                 disabled={processing}
               />
 
-              {/* ✅ Controlled Prompt Text Area */}
               <TextArea
                 value={promptValue}
                 onChange={handlePromptChange}
-                placeholder="Enter your extraction prompt here... (You can edit or clear this prompt)"
+                placeholder="Enter your extraction prompt here..."
                 className="font-mono text-sm resize-none pr-24"
                 style={{
                   minHeight: "320px",
@@ -447,7 +392,6 @@ const IngestPage = () => {
                 disabled={processing}
               />
 
-              {/* File Upload + Send Button Container */}
               <div className="absolute bottom-3 right-3 flex items-center gap-2">
                 {!file ? (
                   <Button
@@ -492,11 +436,7 @@ const IngestPage = () => {
           </Form.Item>
 
           <div className="mt-3 text-xs text-gray-500 flex items-center gap-2">
-            💡{" "}
-            <span>
-              You can edit the prompt above or use the default. Attach a PDF and
-              click Send to start.
-            </span>
+            💡 <span>Attach a PDF file and click Send to start processing</span>
           </div>
         </Card>
       </Form>

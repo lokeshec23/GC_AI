@@ -5,13 +5,11 @@ import {
   Input,
   InputNumber,
   Button,
-  Divider,
   Space,
   Tag,
   message,
   Spin,
   Collapse,
-  Alert,
 } from "antd";
 import {
   SaveOutlined,
@@ -98,42 +96,72 @@ const SettingsPage = () => {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
-        // In SettingsPage.jsx initialValues
         initialValues={{
           temperature: 0.7,
           max_output_tokens: 8192,
           top_p: 1.0,
-          chunk_size: 1500, // ✅ Default to safe value for Gemini Flash
+          chunk_size: 1500,
           chunk_overlap: 200,
           stop_sequences: [],
         }}
       >
-        {/* API Keys Section */}
+        {/* OpenAI Section */}
         <Card
           title={
             <>
-              <KeyOutlined /> API Keys
+              <KeyOutlined /> Azure OpenAI Configuration
             </>
           }
           className="mb-6"
         >
-          <Form.Item
-            label="OpenAI API Key"
-            name="openai_api_key"
-            rules={[{ required: false }]}
-          >
+          <Form.Item label="API Key" name="openai_api_key">
             <Input.Password
-              placeholder="sk-..."
+              placeholder="Enter your Azure OpenAI API key"
               prefix={<KeyOutlined />}
               className="font-mono"
             />
           </Form.Item>
 
-          <Form.Item
-            label="Gemini API Key"
-            name="gemini_api_key"
-            rules={[{ required: false }]}
-          >
+          <Form.Item label="Endpoint" name="openai_endpoint">
+            <Input
+              placeholder="https://your-resource.openai.azure.com/"
+              prefix={<KeyOutlined />}
+              className="font-mono"
+            />
+          </Form.Item>
+
+          <Form.Item label="Deployment Name" name="openai_deployment">
+            <Input
+              placeholder="e.g., extraction-model"
+              prefix={<ThunderboltOutlined />}
+              className="font-mono"
+            />
+          </Form.Item>
+
+          <div className="bg-blue-50 p-3 rounded">
+            <p className="text-sm text-blue-800">
+              <strong>Supported OpenAI Models:</strong>
+            </p>
+            <div className="mt-2">
+              {supportedModels.openai?.map((model) => (
+                <Tag key={model} color="blue" className="mb-1">
+                  {model}
+                </Tag>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        {/* Gemini Section */}
+        <Card
+          title={
+            <>
+              <KeyOutlined /> Google Gemini Configuration
+            </>
+          }
+          className="mb-6"
+        >
+          <Form.Item label="API Key" name="gemini_api_key">
             <Input.Password
               placeholder="AIza..."
               prefix={<KeyOutlined />}
@@ -141,32 +169,21 @@ const SettingsPage = () => {
             />
           </Form.Item>
 
-          <div className="bg-blue-50 p-3 rounded">
-            <p className="text-sm text-blue-800">
-              <strong>Supported Models:</strong>
+          <div className="bg-green-50 p-3 rounded">
+            <p className="text-sm text-green-800">
+              <strong>Supported Gemini Models:</strong>
             </p>
             <div className="mt-2">
-              <div className="mb-2">
-                <span className="font-semibold text-sm">OpenAI: </span>
-                {supportedModels.openai.map((model) => (
-                  <Tag key={model} color="blue" className="mb-1">
-                    {model}
-                  </Tag>
-                ))}
-              </div>
-              <div>
-                <span className="font-semibold text-sm">Gemini: </span>
-                {supportedModels.gemini.map((model) => (
-                  <Tag key={model} color="green" className="mb-1">
-                    {model}
-                  </Tag>
-                ))}
-              </div>
+              {supportedModels.gemini?.map((model) => (
+                <Tag key={model} color="green" className="mb-1">
+                  {model}
+                </Tag>
+              ))}
             </div>
           </div>
         </Card>
 
-        {/* LLM Parameters Section */}
+        {/* LLM Parameters */}
         <Card
           title={
             <>
@@ -194,19 +211,13 @@ const SettingsPage = () => {
             <Form.Item
               label="Max Output Tokens"
               name="max_output_tokens"
-              tooltip="Maximum length of generated response. Gemini needs higher values (8192+) due to thinking tokens."
+              tooltip="Maximum length of generated response"
               rules={[{ required: true }]}
-              extra={
-                <span className="text-xs text-orange-600">
-                  ⚠️ For Gemini models, use at least 8192 tokens to avoid
-                  truncation
-                </span>
-              }
             >
               <InputNumber
-                min={1000}
+                min={1}
                 max={128000}
-                step={1024}
+                step={256}
                 className="w-full"
                 placeholder="8192"
               />
@@ -241,45 +252,13 @@ const SettingsPage = () => {
           </Collapse>
         </Card>
 
-        {/* PDF Processing Section */}
-        {/* PDF Processing Section */}
+        {/* PDF Processing */}
         <Card title="📄 PDF Processing & Text Chunking" className="mb-6">
-          {/* <Alert
-            message="Chunking Strategy"
-            description="Text is split into chunks for LLM processing. Smaller chunks = more API calls but safer. Larger chunks = fewer calls but may hit token limits."
-            type="info"
-            showIcon
-            className="mb-4"
-          /> */}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Form.Item
               label="Chunk Size (tokens)"
               name="chunk_size"
-              tooltip="Maximum tokens per chunk. Leave at default for auto-calculation based on model."
-              extra={
-                <div className="text-xs mt-1">
-                  <div className="font-semibold mb-1">
-                    Recommended by model:
-                  </div>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>
-                      <strong>Gemini 2.5 Flash:</strong> 1500 tokens (due to
-                      thinking overhead)
-                    </li>
-                    <li>
-                      <strong>Gemini 2.5 Pro:</strong> 8000 tokens (larger
-                      context)
-                    </li>
-                    <li>
-                      <strong>GPT-4o:</strong> 4000 tokens (balanced)
-                    </li>
-                    <li>
-                      <strong>GPT-4:</strong> 2000 tokens (smaller limit)
-                    </li>
-                  </ul>
-                </div>
-              }
+              tooltip="Maximum tokens per chunk"
               rules={[{ required: true }]}
             >
               <InputNumber
@@ -287,19 +266,14 @@ const SettingsPage = () => {
                 max={10000}
                 step={500}
                 className="w-full"
-                placeholder="Auto (recommended)"
+                placeholder="1500"
               />
             </Form.Item>
 
             <Form.Item
               label="Chunk Overlap (tokens)"
               name="chunk_overlap"
-              tooltip="Overlap between consecutive chunks to maintain context"
-              extra={
-                <span className="text-xs text-gray-600">
-                  Recommended: 200-300 tokens for smooth transitions
-                </span>
-              }
+              tooltip="Overlap between chunks for context"
               rules={[{ required: true }]}
             >
               <InputNumber
@@ -311,38 +285,8 @@ const SettingsPage = () => {
               />
             </Form.Item>
           </div>
-
-          {/* <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-              <ThunderboltOutlined />
-              How Chunking Works
-            </h4>
-            <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-              <li>
-                <strong>OCR extracts text</strong> from PDF (30 pages at a time
-                for speed)
-              </li>
-              <li>
-                <strong>Text is split</strong> into chunks based on your
-                settings above
-              </li>
-              <li>
-                <strong>Each chunk is sent</strong> to the LLM separately
-              </li>
-              <li>
-                <strong>Results are merged</strong> into final Excel output
-              </li>
-            </ol>
-
-            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
-              <p className="text-xs text-yellow-800">
-                ⚠️ <strong>Note:</strong> If you get "token limit exceeded"
-                errors, reduce the chunk size. For Gemini Flash models, use 1500
-                tokens or less.
-              </p>
-            </div>
-          </div> */}
         </Card>
+
         {/* Submit Button */}
         <div className="flex justify-end">
           <Space>

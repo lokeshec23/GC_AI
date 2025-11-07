@@ -21,7 +21,6 @@ async def get_current_user_id(authorization: str = Header(None)) -> str:
     
     return payload.get("sub")
 
-# ✅ Get user settings
 @router.get("", response_model=SettingsResponse)
 async def get_settings(user_id: str = Depends(get_current_user_id)):
     """Get current user's settings"""
@@ -33,17 +32,18 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
     return SettingsResponse(
         user_id=str(settings["user_id"]),
         openai_api_key=settings.get("openai_api_key"),
+        openai_endpoint=settings.get("openai_endpoint"),
+        openai_deployment=settings.get("openai_deployment"),
         gemini_api_key=settings.get("gemini_api_key"),
         temperature=settings.get("temperature", 0.7),
-        max_output_tokens=settings.get("max_output_tokens", 4096),
+        max_output_tokens=settings.get("max_output_tokens", 8192),
         top_p=settings.get("top_p", 1.0),
         stop_sequences=settings.get("stop_sequences", []),
-        chunk_size=settings.get("chunk_size", 7000),
+        chunk_size=settings.get("chunk_size", 1500),
         chunk_overlap=settings.get("chunk_overlap", 200),
         updated_at=settings.get("updated_at", datetime.utcnow()).isoformat()
     )
 
-# ✅ Create/Update settings
 @router.post("", response_model=SettingsResponse)
 async def update_settings(
     settings_data: SettingsUpdate,
@@ -51,12 +51,13 @@ async def update_settings(
 ):
     """Create or update user settings"""
     settings_dict = settings_data.model_dump(exclude_unset=False)
-    
     updated_settings = await create_or_update_settings(user_id, settings_dict)
     
     return SettingsResponse(
         user_id=str(updated_settings["user_id"]),
         openai_api_key=updated_settings.get("openai_api_key"),
+        openai_endpoint=updated_settings.get("openai_endpoint"),
+        openai_deployment=updated_settings.get("openai_deployment"),
         gemini_api_key=updated_settings.get("gemini_api_key"),
         temperature=updated_settings.get("temperature"),
         max_output_tokens=updated_settings.get("max_output_tokens"),
@@ -67,16 +68,14 @@ async def update_settings(
         updated_at=updated_settings.get("updated_at").isoformat()
     )
 
-# ✅ Get supported models
 @router.get("/models")
 async def get_supported_models():
     """Get list of supported models for dropdown"""
     return {
-        "openai": SUPPORTED_MODELS["openai"],
-        "gemini": SUPPORTED_MODELS["gemini"]
+        "openai": SUPPORTED_MODELS.get("openai", []),
+        "gemini": SUPPORTED_MODELS.get("gemini", [])
     }
 
-# ✅ Delete settings
 @router.delete("")
 async def remove_settings(user_id: str = Depends(get_current_user_id)):
     """Delete user settings"""

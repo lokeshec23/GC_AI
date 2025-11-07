@@ -58,20 +58,43 @@ def process_comparison_background(
         update_progress(session_id, 45, f"Initializing {model_provider} LLM...")
         
         # Get API key
-        api_key = user_settings.get(f"{model_provider}_api_key")
-        if not api_key:
-            raise ValueError(f"No API key found for {model_provider}")
-        
-        # Initialize LLM
-        llm = LLMProvider(
-            provider=model_provider,
-            api_key=api_key,
-            model=model_name,
-            temperature=user_settings.get("temperature", 0.7),
-            max_tokens=user_settings.get("max_output_tokens", 8192),
-            top_p=user_settings.get("top_p", 1.0),
-            stop_sequences=user_settings.get("stop_sequences", [])
-        )
+         # Initialize LLM based on provider
+        if model_provider == "openai":
+            api_key = user_settings.get("openai_api_key")
+            endpoint = user_settings.get("openai_endpoint")
+            deployment = user_settings.get("openai_deployment")
+            
+            if not api_key or not endpoint or not deployment:
+                raise ValueError("OpenAI credentials not configured in Settings")
+            
+            llm = LLMProvider(
+                provider="openai",
+                api_key=api_key,
+                model=model_name,
+                temperature=user_settings.get("temperature", 0.7),
+                max_tokens=user_settings.get("max_output_tokens", 8192),
+                top_p=user_settings.get("top_p", 1.0),
+                stop_sequences=user_settings.get("stop_sequences", []),
+                azure_endpoint=endpoint,
+                azure_deployment=deployment,
+            )
+            
+        elif model_provider == "gemini":
+            api_key = user_settings.get("gemini_api_key")
+            if not api_key:
+                raise ValueError("Gemini API key not configured in Settings")
+            
+            llm = LLMProvider(
+                provider="gemini",
+                api_key=api_key,
+                model=model_name,
+                temperature=user_settings.get("temperature", 0.7),
+                max_tokens=user_settings.get("max_output_tokens", 8192),
+                top_p=user_settings.get("top_p", 1.0),
+                stop_sequences=user_settings.get("stop_sequences", [])
+            )
+        else:
+            raise ValueError(f"Unsupported provider: {model_provider}")
         
         update_progress(session_id, 50, "Comparing guidelines with LLM...")
         

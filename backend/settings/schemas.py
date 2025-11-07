@@ -10,8 +10,12 @@ from config import (
 )
 
 class SettingsUpdate(BaseModel):
-    # API Keys (plain text as requested)
+    # Azure OpenAI
     openai_api_key: Optional[str] = None
+    openai_endpoint: Optional[str] = None
+    openai_deployment: Optional[str] = None
+    
+    # Gemini
     gemini_api_key: Optional[str] = None
     
     # LLM Parameters
@@ -21,12 +25,14 @@ class SettingsUpdate(BaseModel):
     stop_sequences: List[str] = Field(default_factory=list)
     
     # Chunking Parameters
-    chunk_size: int = Field(default=DEFAULT_CHUNK_SIZE, ge=1000, le=100000)
-    chunk_overlap: int = Field(default=DEFAULT_CHUNK_OVERLAP, ge=0, le=1000)
+    chunk_size: int = Field(default=DEFAULT_CHUNK_SIZE, ge=500, le=10000)
+    chunk_overlap: int = Field(default=DEFAULT_CHUNK_OVERLAP, ge=0, le=500)
 
 class SettingsResponse(BaseModel):
     user_id: str
     openai_api_key: Optional[str] = None
+    openai_endpoint: Optional[str] = None
+    openai_deployment: Optional[str] = None
     gemini_api_key: Optional[str] = None
     temperature: float
     max_output_tokens: int
@@ -35,19 +41,3 @@ class SettingsResponse(BaseModel):
     chunk_size: int
     chunk_overlap: int
     updated_at: str
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "user_id": "507f1f77bcf86cd799439011",
-                "openai_api_key": "sk-...",
-                "gemini_api_key": "AIza...",
-                "temperature": 0.7,
-                "max_output_tokens": 4096,
-                "top_p": 1.0,
-                "stop_sequences": [],
-                "chunk_size": 7000,
-                "chunk_overlap": 200,
-                "updated_at": "2024-01-15T10:30:00"
-            }
-        }

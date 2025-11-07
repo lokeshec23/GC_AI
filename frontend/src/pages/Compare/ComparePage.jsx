@@ -13,7 +13,6 @@ import {
   Modal,
   Spin,
   Tooltip,
-  Alert,
 } from "antd";
 import {
   FileExcelOutlined,
@@ -25,6 +24,7 @@ import {
   LoadingOutlined,
   ReloadOutlined,
   PaperClipOutlined,
+  EyeOutlined,
 } from "@ant-design/icons";
 import { compareAPI, settingsAPI } from "../../services/api";
 
@@ -35,43 +35,48 @@ const { Option } = Select;
 const DEFAULT_COMPARISON_PROMPT = `You are an expert mortgage guideline analyst tasked with comparing two guidelines.
 
 INSTRUCTIONS:
-1. Compare the two guidelines thoroughly
-2. Identify what was Added, Removed, Modified, or remains Unchanged
-3. Focus on substantive differences in rules, requirements, and eligibility criteria
-4. Organize by major categories (e.g., Income Verification, Credit Requirements, etc.)
+1. Compare the two guidelines provided (Guideline 1 is original, Guideline 2 is updated).
+2. Identify what was Added, Removed, Modified, or remains Unchanged.
+3. Focus on substantive differences in rules, requirements, and eligibility criteria.
+4. Organize the comparison logically by section or category.
 
 OUTPUT FORMAT (JSON ONLY):
 Return a JSON array where each object represents a comparison item:
 
 [
   {
-    "category": "Added in Guideline 2",
-    "section": "Section name or rule title",
-    "guideline1_value": "Value from first guideline (empty if new)",
-    "guideline2_value": "Value from second guideline",
-    "difference": "Description of what changed or was added"
+    "category": "Added",
+    "section": "The section where the rule was added",
+    "guideline1_value": "Not present",
+    "guideline2_value": "The new rule or requirement in Guideline 2",
+    "difference": "A brief explanation of what was added."
   },
   {
     "category": "Modified",
-    "section": "Section that changed",
-    "guideline1_value": "Original requirement",
-    "guideline2_value": "Updated requirement",
-    "difference": "What specifically changed between versions"
+    "section": "The section that changed",
+    "guideline1_value": "The original requirement from Guideline 1",
+    "guideline2_value": "The updated requirement from Guideline 2",
+    "difference": "A summary of what specifically changed between the two versions."
+  },
+  {
+    "category": "Removed",
+    "section": "The section from which the rule was removed",
+    "guideline1_value": "The rule that was present in Guideline 1",
+    "guideline2_value": "Not present",
+    "difference": "This rule was removed in the updated guideline."
   }
 ]
 
 CATEGORIES TO USE:
-- "Added in Guideline 2" - New rules/sections in second file
-- "Removed from Guideline 1" - Rules present in first but not second
-- "Modified" - Rules that exist in both but with changes
-- "Unchanged" - Important rules that remain the same
+- "Added"
+- "Removed"
+- "Modified"
+- "Unchanged"
 
 CRITICAL:
-- Output ONLY valid JSON array
-- No markdown, no code blocks, no explanations
-- Start with [ and end with ]
-- Compare substantive content, not just formatting
-- Be thorough and accurate`;
+- Output ONLY a valid JSON array.
+- No markdown, no code blocks, no explanations.
+- Start with [ and end with ].`;
 
 const ComparePage = () => {
   const [form] = Form.useForm();
@@ -85,13 +90,13 @@ const ComparePage = () => {
     openai: [],
     gemini: [],
   });
-  const [selectedProvider, setSelectedProvider] = useState("gemini");
+  const [selectedProvider, setSelectedProvider] = useState("openai");
   const [previewData, setPreviewData] = useState(null);
 
-  // ✅ State for prompt
+  // State for prompt
   const [promptValue, setPromptValue] = useState(DEFAULT_COMPARISON_PROMPT);
 
-  // ✅ Modal states
+  // Modal states
   const [processingModalVisible, setProcessingModalVisible] = useState(false);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
 
@@ -103,8 +108,8 @@ const ComparePage = () => {
 
     // Set initial form values
     form.setFieldsValue({
-      model_provider: "gemini",
-      model_name: "gemini-2.5-flash-preview-05-20",
+      model_provider: "openai",
+      model_name: "gpt-4o",
       custom_prompt: DEFAULT_COMPARISON_PROMPT,
     });
 
@@ -120,7 +125,7 @@ const ComparePage = () => {
     }
   };
 
-  // ✅ Handle file selections
+  // File handlers
   const handleFile1Select = (event) => {
     const selectedFile = event.target.files[0];
     if (selectedFile) {
@@ -153,39 +158,27 @@ const ComparePage = () => {
 
   const handleRemoveFile1 = () => {
     setFile1(null);
-    if (file1InputRef.current) {
-      file1InputRef.current.value = "";
-    }
+    if (file1InputRef.current) file1InputRef.current.value = "";
     message.info("Guideline 1 removed");
   };
 
   const handleRemoveFile2 = () => {
     setFile2(null);
-    if (file2InputRef.current) {
-      file2InputRef.current.value = "";
-    }
+    if (file2InputRef.current) file2InputRef.current.value = "";
     message.info("Guideline 2 removed");
   };
 
-  const handleAttachFile1Click = () => {
-    file1InputRef.current?.click();
-  };
+  const handleAttachFile1Click = () => file1InputRef.current?.click();
+  const handleAttachFile2Click = () => file2InputRef.current?.click();
 
-  const handleAttachFile2Click = () => {
-    file2InputRef.current?.click();
-  };
-
-  // ✅ Reset prompt
+  // Prompt handlers
   const handleResetPrompt = () => {
     setPromptValue(DEFAULT_COMPARISON_PROMPT);
     form.setFieldsValue({ custom_prompt: DEFAULT_COMPARISON_PROMPT });
     message.success("Prompt reset to default");
   };
 
-  // ✅ Handle prompt change
-  const handlePromptChange = (e) => {
-    setPromptValue(e.target.value);
-  };
+  const handlePromptChange = (e) => setPromptValue(e.target.value);
 
   const handleSubmit = async (values) => {
     if (!file1 || !file2) {
@@ -194,7 +187,6 @@ const ComparePage = () => {
     }
 
     const currentPrompt = promptValue.trim();
-
     if (!currentPrompt) {
       message.error("Please enter a comparison prompt");
       return;
@@ -207,7 +199,6 @@ const ComparePage = () => {
       setPreviewData(null);
       setProcessingModalVisible(true);
 
-      // Create FormData
       const formData = new FormData();
       formData.append("file1", file1);
       formData.append("file2", file2);
@@ -215,19 +206,12 @@ const ComparePage = () => {
       formData.append("model_name", values.model_name);
       formData.append("custom_prompt", currentPrompt);
 
-      console.log(
-        "Submitting comparison with prompt:",
-        currentPrompt.substring(0, 100) + "..."
-      );
-
-      // Start processing
       const response = await compareAPI.compareGuidelines(formData);
       const { session_id } = response.data;
       setSessionId(session_id);
 
       message.success("Comparison started!");
 
-      // Connect to progress stream
       const eventSource = compareAPI.createProgressStream(session_id);
 
       eventSource.onmessage = (event) => {
@@ -239,10 +223,7 @@ const ComparePage = () => {
           eventSource.close();
           setProcessing(false);
           setProcessingModalVisible(false);
-
-          // Fetch preview data
           fetchPreviewData(session_id);
-
           message.success("Comparison complete!");
         }
       };
@@ -262,11 +243,9 @@ const ComparePage = () => {
     }
   };
 
-  // ✅ Fetch preview data
   const fetchPreviewData = async (sid) => {
     try {
       const response = await compareAPI.getPreview(sid);
-      console.log("Preview data received:", response.data);
       setPreviewData(response.data);
       setPreviewModalVisible(true);
     } catch (error) {
@@ -275,7 +254,6 @@ const ComparePage = () => {
     }
   };
 
-  // ✅ Handle Excel download
   const handleDownload = () => {
     if (sessionId) {
       message.success("Downloading comparison Excel file...");
@@ -283,21 +261,14 @@ const ComparePage = () => {
     }
   };
 
-  // ✅ Close preview modal
   const handleClosePreview = () => {
     setPreviewModalVisible(false);
     setPreviewData(null);
     setSessionId(null);
   };
 
-  // ✅ Convert preview data to table format
   const convertToTableData = (data) => {
-    if (!data || !Array.isArray(data)) {
-      console.log("Invalid preview data:", data);
-      return [];
-    }
-
-    console.log("Converting comparison data, length:", data.length);
+    if (!data || !Array.isArray(data)) return [];
 
     return data.map((item, idx) => ({
       key: idx,
@@ -309,20 +280,18 @@ const ComparePage = () => {
     }));
   };
 
-  // ✅ Table columns for comparison results
   const tableColumns = [
     {
       title: "Category",
       dataIndex: "category",
       key: "category",
-      width: "15%",
+      width: 150,
       render: (text) => {
         let color = "default";
         if (text.toLowerCase().includes("add")) color = "green";
         else if (text.toLowerCase().includes("remove")) color = "red";
         else if (text.toLowerCase().includes("modif")) color = "orange";
         else if (text.toLowerCase().includes("unchanged")) color = "blue";
-
         return <Tag color={color}>{text}</Tag>;
       },
       filters: [
@@ -337,14 +306,14 @@ const ComparePage = () => {
       title: "Section",
       dataIndex: "section",
       key: "section",
-      width: "20%",
+      width: 200,
       render: (text) => <span className="font-semibold">{text}</span>,
     },
     {
-      title: "Guideline 1",
+      title: file1?.name || "Guideline 1",
       dataIndex: "guideline1_value",
       key: "guideline1_value",
-      width: "25%",
+      width: 300,
       render: (text) => (
         <div className="whitespace-pre-wrap text-sm">
           {text || <span className="text-gray-400 italic">Not present</span>}
@@ -352,10 +321,10 @@ const ComparePage = () => {
       ),
     },
     {
-      title: "Guideline 2",
+      title: file2?.name || "Guideline 2",
       dataIndex: "guideline2_value",
       key: "guideline2_value",
-      width: "25%",
+      width: 300,
       render: (text) => (
         <div className="whitespace-pre-wrap text-sm">
           {text || <span className="text-gray-400 italic">Not present</span>}
@@ -366,9 +335,9 @@ const ComparePage = () => {
       title: "Difference",
       dataIndex: "difference",
       key: "difference",
-      width: "15%",
+      width: 250,
       render: (text) => (
-        <div className="whitespace-pre-wrap text-sm">{text}</div>
+        <div className="whitespace-pre-wrap text-sm font-semibold">{text}</div>
       ),
     },
   ];
@@ -459,7 +428,6 @@ const ComparePage = () => {
                 style={{ display: "none" }}
                 disabled={processing}
               />
-
               <div className="text-center">
                 <div className="mb-4">
                   <FileExcelOutlined className="text-5xl text-blue-500" />
@@ -467,7 +435,6 @@ const ComparePage = () => {
                 <h3 className="text-lg font-semibold mb-2">
                   Guideline 1 (Original)
                 </h3>
-
                 {!file1 ? (
                   <Button
                     icon={<PaperClipOutlined />}
@@ -479,15 +446,15 @@ const ComparePage = () => {
                     Choose First Excel File
                   </Button>
                 ) : (
-                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 flex-1">
-                        <FileExcelOutlined className="text-green-600 text-xl" />
+                        <FileExcelOutlined className="text-blue-600 text-xl" />
                         <div className="text-left flex-1">
-                          <p className="font-medium text-green-800 truncate">
+                          <p className="font-medium text-blue-800 truncate">
                             {file1.name}
                           </p>
-                          <p className="text-xs text-green-600">
+                          <p className="text-xs text-blue-600">
                             {(file1.size / 1024).toFixed(2)} KB
                           </p>
                         </div>
@@ -515,7 +482,6 @@ const ComparePage = () => {
                 style={{ display: "none" }}
                 disabled={processing}
               />
-
               <div className="text-center">
                 <div className="mb-4">
                   <FileExcelOutlined className="text-5xl text-green-500" />
@@ -523,7 +489,6 @@ const ComparePage = () => {
                 <h3 className="text-lg font-semibold mb-2">
                   Guideline 2 (Updated)
                 </h3>
-
                 {!file2 ? (
                   <Button
                     icon={<PaperClipOutlined />}
@@ -535,15 +500,15 @@ const ComparePage = () => {
                     Choose Second Excel File
                   </Button>
                 ) : (
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 flex-1">
-                        <FileExcelOutlined className="text-blue-600 text-xl" />
+                        <FileExcelOutlined className="text-green-600 text-xl" />
                         <div className="text-left flex-1">
-                          <p className="font-medium text-blue-800 truncate">
+                          <p className="font-medium text-green-800 truncate">
                             {file2.name}
                           </p>
-                          <p className="text-xs text-blue-600">
+                          <p className="text-xs text-green-600">
                             {(file2.size / 1024).toFixed(2)} KB
                           </p>
                         </div>
@@ -560,14 +525,6 @@ const ComparePage = () => {
                 )}
               </div>
             </div>
-          </div>
-
-          <div className="mt-4 text-xs text-gray-500 flex items-center gap-2">
-            💡{" "}
-            <span>
-              Upload Excel files extracted from the Ingest Guideline feature or
-              any Excel files with guideline data
-            </span>
           </div>
         </Card>
 
@@ -605,14 +562,6 @@ const ComparePage = () => {
               disabled={processing}
             />
           </Form.Item>
-
-          <div className="mt-3 text-xs text-gray-500 flex items-center gap-2">
-            💡{" "}
-            <span>
-              Customize the prompt to focus on specific aspects of the
-              comparison
-            </span>
-          </div>
         </Card>
 
         {/* Submit Button */}
@@ -630,7 +579,7 @@ const ComparePage = () => {
         </div>
       </Form>
 
-      {/* ✅ Processing Modal */}
+      {/* Processing Modal */}
       <Modal
         title={
           <div className="flex items-center gap-2">
@@ -650,16 +599,12 @@ const ComparePage = () => {
           <Progress
             percent={progress}
             status={progress === 100 ? "success" : "active"}
-            strokeColor={{
-              "0%": "#108ee9",
-              "100%": "#87d068",
-            }}
+            strokeColor={{ "0%": "#108ee9", "100%": "#87d068" }}
             strokeWidth={12}
           />
           <div className="mt-6 text-center">
             <p className="text-gray-600 text-base">{progressMessage}</p>
           </div>
-
           {file1 && file2 && (
             <div className="mt-4 space-y-2">
               <div className="p-3 bg-blue-50 rounded-lg">
@@ -683,7 +628,7 @@ const ComparePage = () => {
         </div>
       </Modal>
 
-      {/* ✅ Preview Modal */}
+      {/* Preview Modal */}
       <Modal
         title={
           <div className="flex items-center gap-2 text-lg">
@@ -694,10 +639,7 @@ const ComparePage = () => {
         open={previewModalVisible}
         onCancel={handleClosePreview}
         width="95vw"
-        style={{
-          top: 20,
-          maxWidth: "1800px",
-        }}
+        style={{ top: 20, maxWidth: "1800px" }}
         centered={false}
         footer={[
           <Button key="close" onClick={handleClosePreview} size="large">
@@ -721,26 +663,12 @@ const ComparePage = () => {
       >
         {previewData ? (
           <div>
-            <div className="mb-4 p-3 bg-purple-50 rounded-lg border border-purple-200">
-              <p className="text-sm text-purple-800 flex items-center gap-2">
-                <SwapOutlined />
-                <span>
-                  Comparison results ({convertToTableData(previewData).length}{" "}
-                  items). Click <strong>Download Comparison Excel</strong> to
-                  save the file.
-                </span>
-              </p>
-            </div>
-
-            {/* Legend */}
             <div className="mb-4 flex gap-2 flex-wrap">
               <Tag color="green">Added</Tag>
               <Tag color="red">Removed</Tag>
               <Tag color="orange">Modified</Tag>
               <Tag color="blue">Unchanged</Tag>
             </div>
-
-            {/* Comparison Table */}
             <div style={{ height: "calc(100vh - 350px)", minHeight: "400px" }}>
               <Table
                 columns={tableColumns}
@@ -749,15 +677,12 @@ const ComparePage = () => {
                   pageSize: 50,
                   showSizeChanger: true,
                   showQuickJumper: true,
-                  pageSizeOptions: ["20", "50", "100", "200"],
+                  pageSizeOptions: ["20", "50", "100"],
                   showTotal: (total, range) =>
                     `${range[0]}-${range[1]} of ${total} items`,
                   position: ["bottomCenter"],
                 }}
-                scroll={{
-                  x: "max-content",
-                  y: "calc(100vh - 450px)",
-                }}
+                scroll={{ x: "max-content", y: "calc(100vh - 450px)" }}
                 size="small"
                 bordered
                 sticky
