@@ -11,6 +11,7 @@ import {
   message,
   Spin,
   Collapse,
+  Alert,
 } from "antd";
 import {
   SaveOutlined,
@@ -97,11 +98,12 @@ const SettingsPage = () => {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        // In SettingsPage.jsx initialValues
         initialValues={{
           temperature: 0.7,
-          max_output_tokens: 8192, // ✅ Changed from 4096
+          max_output_tokens: 8192,
           top_p: 1.0,
-          chunk_size: 3000, // ✅ Changed from 7000
+          chunk_size: 1500, // ✅ Default to safe value for Gemini Flash
           chunk_overlap: 200,
           stop_sequences: [],
         }}
@@ -240,40 +242,107 @@ const SettingsPage = () => {
         </Card>
 
         {/* PDF Processing Section */}
-        <Card title="📄 PDF Processing" className="mb-6">
+        {/* PDF Processing Section */}
+        <Card title="📄 PDF Processing & Text Chunking" className="mb-6">
+          {/* <Alert
+            message="Chunking Strategy"
+            description="Text is split into chunks for LLM processing. Smaller chunks = more API calls but safer. Larger chunks = fewer calls but may hit token limits."
+            type="info"
+            showIcon
+            className="mb-4"
+          /> */}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Form.Item
               label="Chunk Size (tokens)"
               name="chunk_size"
-              tooltip="Size of each text chunk for processing"
+              tooltip="Maximum tokens per chunk. Leave at default for auto-calculation based on model."
+              extra={
+                <div className="text-xs mt-1">
+                  <div className="font-semibold mb-1">
+                    Recommended by model:
+                  </div>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>
+                      <strong>Gemini 2.5 Flash:</strong> 1500 tokens (due to
+                      thinking overhead)
+                    </li>
+                    <li>
+                      <strong>Gemini 2.5 Pro:</strong> 8000 tokens (larger
+                      context)
+                    </li>
+                    <li>
+                      <strong>GPT-4o:</strong> 4000 tokens (balanced)
+                    </li>
+                    <li>
+                      <strong>GPT-4:</strong> 2000 tokens (smaller limit)
+                    </li>
+                  </ul>
+                </div>
+              }
               rules={[{ required: true }]}
             >
               <InputNumber
-                min={1000}
-                max={100000}
-                step={1000}
+                min={500}
+                max={10000}
+                step={500}
                 className="w-full"
-                placeholder="7000"
+                placeholder="Auto (recommended)"
               />
             </Form.Item>
 
             <Form.Item
               label="Chunk Overlap (tokens)"
               name="chunk_overlap"
-              tooltip="Overlap between chunks for context preservation"
+              tooltip="Overlap between consecutive chunks to maintain context"
+              extra={
+                <span className="text-xs text-gray-600">
+                  Recommended: 200-300 tokens for smooth transitions
+                </span>
+              }
               rules={[{ required: true }]}
             >
               <InputNumber
                 min={0}
-                max={1000}
+                max={500}
                 step={50}
                 className="w-full"
                 placeholder="200"
               />
             </Form.Item>
           </div>
-        </Card>
 
+          {/* <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+              <ThunderboltOutlined />
+              How Chunking Works
+            </h4>
+            <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+              <li>
+                <strong>OCR extracts text</strong> from PDF (30 pages at a time
+                for speed)
+              </li>
+              <li>
+                <strong>Text is split</strong> into chunks based on your
+                settings above
+              </li>
+              <li>
+                <strong>Each chunk is sent</strong> to the LLM separately
+              </li>
+              <li>
+                <strong>Results are merged</strong> into final Excel output
+              </li>
+            </ol>
+
+            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+              <p className="text-xs text-yellow-800">
+                ⚠️ <strong>Note:</strong> If you get "token limit exceeded"
+                errors, reduce the chunk size. For Gemini Flash models, use 1500
+                tokens or less.
+              </p>
+            </div>
+          </div> */}
+        </Card>
         {/* Submit Button */}
         <div className="flex justify-end">
           <Space>

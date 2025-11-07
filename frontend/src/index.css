@@ -44,3 +44,7 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
 }
+
+:where(.css-dev-only-do-not-override-11mmrso).ant-layout-header {
+  background-color: #fff !important;
+}

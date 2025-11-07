@@ -55,13 +55,15 @@ class LLMProvider:
     
     def _generate_gemini(self, prompt: str) -> str:
         """Call Gemini API with better error handling"""
+        from config import get_model_config
         headers = {
             "Content-Type": "application/json"
         }
         
         # ✅ Use higher max tokens for Gemini (includes thinking tokens)
-        effective_max_tokens = max(self.max_tokens, 8192)
-        
+        model_config = get_model_config(self.model)
+        effective_max_tokens = model_config["max_output"]
+            
         payload = {
             "contents": [
                 {
