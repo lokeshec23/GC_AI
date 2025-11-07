@@ -576,12 +576,12 @@ const IngestPage = () => {
       >
         {previewData ? (
           <div className="h-full flex flex-col">
-            <div className="mb-4 p-3 bg-green-50 rounded-lg border border-green-200 flex-shrink-0">
+            {/* <div className="mb-4 p-3 bg-green-50 rounded-lg border border-green-200 flex-shrink-0">
               <p className="text-sm text-green-800 flex items-center gap-2">
                 <EyeOutlined />
                 <span>Preview of extracted data. Scroll to view all rows.</span>
               </p>
-            </div>
+            </div> */}
 
             <div className="flex-1 overflow-hidden">
               <Table

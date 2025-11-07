@@ -2,7 +2,6 @@
 fastapi
 uvicorn[standard]
 python-multipart
-uvicorn
 
 # Database
 motor
@@ -15,7 +14,7 @@ python-dotenv
 
 # LLM Providers
 openai
-google-generativeai
+requests
 
 # PDF Processing
 PyPDF2
@@ -25,10 +24,10 @@ azure-core
 # Token counting
 tiktoken
 
-# Excel Generation
+# Excel Processing
 openpyxl
 pandas
 
-# Utilities
+# Utilitie
 pydantic
 pydantic-settings

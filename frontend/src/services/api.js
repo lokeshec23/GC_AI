@@ -112,9 +112,29 @@ export const ingestAPI = {
   cleanupSession: (sessionId) => api.delete(`/ingest/cleanup/${sessionId}`),
 };
 
-// ==================== COMPARE APIs (Placeholder for future) ====================
+// ==================== COMPARE APIs ====================
 export const compareAPI = {
-  // Will be implemented later
+  compareGuidelines: (formData) =>
+    api.post("/compare/guidelines", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+
+  getStatus: (sessionId) => api.get(`/compare/status/${sessionId}`),
+
+  getPreview: (sessionId) => api.get(`/compare/preview/${sessionId}`),
+
+  createProgressStream: (sessionId) => {
+    return new EventSource(`${API_BASE_URL}/compare/progress/${sessionId}`);
+  },
+
+  downloadExcel: (sessionId) => {
+    const link = document.createElement("a");
+    link.href = `${API_BASE_URL}/compare/download/${sessionId}`;
+    link.download = "comparison.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  },
 };
 
 export default api;
