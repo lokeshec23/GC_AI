@@ -18,20 +18,17 @@ import {
   FileExcelOutlined,
   SendOutlined,
   DownloadOutlined,
-  ThunderboltOutlined,
   CloseCircleOutlined,
   SwapOutlined,
   LoadingOutlined,
   ReloadOutlined,
   PaperClipOutlined,
-  EyeOutlined,
 } from "@ant-design/icons";
 import { compareAPI, settingsAPI } from "../../services/api";
 
 const { TextArea } = Input;
 const { Option } = Select;
 
-// ✅ Default comparison prompt
 const DEFAULT_COMPARISON_PROMPT = `You are an expert mortgage guideline analyst tasked with comparing two guidelines.
 
 INSTRUCTIONS:
@@ -80,23 +77,25 @@ CRITICAL:
 
 const ComparePage = () => {
   const [form] = Form.useForm();
+
   const [file1, setFile1] = useState(null);
   const [file2, setFile2] = useState(null);
+
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
-  const [sessionId, setSessionId] = useState(null);
+
   const [supportedModels, setSupportedModels] = useState({
     openai: [],
     gemini: [],
   });
   const [selectedProvider, setSelectedProvider] = useState("openai");
-  const [previewData, setPreviewData] = useState(null);
 
-  // State for prompt
   const [promptValue, setPromptValue] = useState(DEFAULT_COMPARISON_PROMPT);
 
-  // Modal states
+  const [previewData, setPreviewData] = useState(null);
+  const [sessionId, setSessionId] = useState(null);
+
   const [processingModalVisible, setProcessingModalVisible] = useState(false);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
 
@@ -104,604 +103,258 @@ const ComparePage = () => {
   const file2InputRef = useRef(null);
 
   useEffect(() => {
-    fetchSupportedModels();
-
-    // Set initial form values
+    fetchModels();
     form.setFieldsValue({
       model_provider: "openai",
       model_name: "gpt-4o",
       custom_prompt: DEFAULT_COMPARISON_PROMPT,
     });
-
-    setPromptValue(DEFAULT_COMPARISON_PROMPT);
   }, []);
 
-  const fetchSupportedModels = async () => {
+  const fetchModels = async () => {
     try {
-      const response = await settingsAPI.getSupportedModels();
-      setSupportedModels(response.data);
-    } catch (error) {
-      message.error("Failed to load supported models");
+      const res = await settingsAPI.getSupportedModels();
+      setSupportedModels(res.data);
+    } catch {
+      message.error("Failed to load models");
     }
-  };
-
-  // File handlers
-  const handleFile1Select = (event) => {
-    const selectedFile = event.target.files[0];
-    if (selectedFile) {
-      if (
-        !selectedFile.name.toLowerCase().endsWith(".xlsx") &&
-        !selectedFile.name.toLowerCase().endsWith(".xls")
-      ) {
-        message.error("Please select an Excel file (.xlsx or .xls)");
-        return;
-      }
-      setFile1(selectedFile);
-      message.success(`Guideline 1: ${selectedFile.name} selected`);
-    }
-  };
-
-  const handleFile2Select = (event) => {
-    const selectedFile = event.target.files[0];
-    if (selectedFile) {
-      if (
-        !selectedFile.name.toLowerCase().endsWith(".xlsx") &&
-        !selectedFile.name.toLowerCase().endsWith(".xls")
-      ) {
-        message.error("Please select an Excel file (.xlsx or .xls)");
-        return;
-      }
-      setFile2(selectedFile);
-      message.success(`Guideline 2: ${selectedFile.name} selected`);
-    }
-  };
-
-  const handleRemoveFile1 = () => {
-    setFile1(null);
-    if (file1InputRef.current) file1InputRef.current.value = "";
-    message.info("Guideline 1 removed");
-  };
-
-  const handleRemoveFile2 = () => {
-    setFile2(null);
-    if (file2InputRef.current) file2InputRef.current.value = "";
-    message.info("Guideline 2 removed");
-  };
-
-  const handleAttachFile1Click = () => file1InputRef.current?.click();
-  const handleAttachFile2Click = () => file2InputRef.current?.click();
-
-  // Prompt handlers
-  const handleResetPrompt = () => {
-    setPromptValue(DEFAULT_COMPARISON_PROMPT);
-    form.setFieldsValue({ custom_prompt: DEFAULT_COMPARISON_PROMPT });
-    message.success("Prompt reset to default");
   };
 
   const handlePromptChange = (e) => setPromptValue(e.target.value);
+  const handleResetPrompt = () => {
+    setPromptValue(DEFAULT_COMPARISON_PROMPT);
+    form.setFieldsValue({ custom_prompt: DEFAULT_COMPARISON_PROMPT });
+    message.success("Prompt reset");
+  };
+
+  const selectFile1 = () => file1InputRef.current.click();
+  const selectFile2 = () => file2InputRef.current.click();
 
   const handleSubmit = async (values) => {
-    if (!file1 || !file2) {
-      message.error("Please upload both Excel files for comparison");
-      return;
-    }
+    if (!file1 || !file2) return message.error("Attach both files");
 
-    const currentPrompt = promptValue.trim();
-    if (!currentPrompt) {
-      message.error("Please enter a comparison prompt");
-      return;
-    }
+    setProcessing(true);
+    setProgress(0);
+    setProcessingModalVisible(true);
+
+    const fd = new FormData();
+    fd.append("file1", file1);
+    fd.append("file2", file2);
+    fd.append("model_provider", values.model_provider);
+    fd.append("model_name", values.model_name);
+    fd.append("custom_prompt", promptValue.trim());
 
     try {
-      setProcessing(true);
-      setProgress(0);
-      setProgressMessage("Initializing...");
-      setPreviewData(null);
-      setProcessingModalVisible(true);
-
-      const formData = new FormData();
-      formData.append("file1", file1);
-      formData.append("file2", file2);
-      formData.append("model_provider", values.model_provider);
-      formData.append("model_name", values.model_name);
-      formData.append("custom_prompt", currentPrompt);
-
-      const response = await compareAPI.compareGuidelines(formData);
-      const { session_id } = response.data;
+      const res = await compareAPI.compareGuidelines(fd);
+      const { session_id } = res.data;
       setSessionId(session_id);
 
-      message.success("Comparison started!");
-
-      const eventSource = compareAPI.createProgressStream(session_id);
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+      const sse = compareAPI.createProgressStream(session_id);
+      sse.onmessage = (e) => {
+        const data = JSON.parse(e.data);
         setProgress(data.progress);
         setProgressMessage(data.message);
-
         if (data.progress >= 100) {
-          eventSource.close();
+          sse.close();
           setProcessing(false);
           setProcessingModalVisible(false);
-          fetchPreviewData(session_id);
-          message.success("Comparison complete!");
+          loadPreview(session_id);
         }
       };
-
-      eventSource.onerror = (error) => {
-        console.error("SSE Error:", error);
-        eventSource.close();
-        setProcessing(false);
-        setProcessingModalVisible(false);
-        message.error("Connection lost. Please check status manually.");
-      };
-    } catch (error) {
+    } catch {
       setProcessing(false);
       setProcessingModalVisible(false);
-      console.error("Submit error:", error);
-      message.error(error.response?.data?.detail || "Comparison failed");
+      message.error("Comparison failed");
     }
   };
 
-  const fetchPreviewData = async (sid) => {
+  const loadPreview = async (sid) => {
     try {
-      const response = await compareAPI.getPreview(sid);
-      setPreviewData(response.data);
+      const res = await compareAPI.getPreview(sid);
+      setPreviewData(res.data);
       setPreviewModalVisible(true);
-    } catch (error) {
-      console.error("Failed to fetch preview:", error);
-      message.error("Failed to load preview data");
+    } catch {
+      message.error("Failed to load results");
     }
   };
 
-  const handleDownload = () => {
-    if (sessionId) {
-      message.success("Downloading comparison Excel file...");
-      compareAPI.downloadExcel(sessionId);
-    }
-  };
-
-  const handleClosePreview = () => {
+  const handleDownload = () => sessionId && compareAPI.downloadExcel(sessionId);
+  const closePreview = () => {
     setPreviewModalVisible(false);
     setPreviewData(null);
-    setSessionId(null);
   };
 
-  const convertToTableData = (data) => {
-    if (!data || !Array.isArray(data)) return [];
+  const convertRows = (data) => (data || []).map((r, i) => ({ key: i, ...r }));
 
-    return data.map((item, idx) => ({
-      key: idx,
-      category: item.category || "",
-      section: item.section || "",
-      guideline1_value: item.guideline1_value || "",
-      guideline2_value: item.guideline2_value || "",
-      difference: item.difference || "",
-    }));
-  };
-
-  const tableColumns = [
+  const columns = [
     {
       title: "Category",
       dataIndex: "category",
-      key: "category",
-      width: 150,
-      render: (text) => {
-        let color = "default";
-        if (text.toLowerCase().includes("add")) color = "green";
-        else if (text.toLowerCase().includes("remove")) color = "red";
-        else if (text.toLowerCase().includes("modif")) color = "orange";
-        else if (text.toLowerCase().includes("unchanged")) color = "blue";
-        return <Tag color={color}>{text}</Tag>;
-      },
-      filters: [
-        { text: "Added", value: "Added" },
-        { text: "Removed", value: "Removed" },
-        { text: "Modified", value: "Modified" },
-        { text: "Unchanged", value: "Unchanged" },
-      ],
-      onFilter: (value, record) => record.category.includes(value),
+      width: 120,
+      render: (t) => <Tag>{t}</Tag>,
     },
-    {
-      title: "Section",
-      dataIndex: "section",
-      key: "section",
-      width: 200,
-      render: (text) => <span className="font-semibold">{text}</span>,
-    },
+    { title: "Section", dataIndex: "section", width: 220 },
     {
       title: file1?.name || "Guideline 1",
       dataIndex: "guideline1_value",
-      key: "guideline1_value",
-      width: 300,
-      render: (text) => (
-        <div className="whitespace-pre-wrap text-sm">
-          {text || <span className="text-gray-400 italic">Not present</span>}
-        </div>
-      ),
+      width: 350,
     },
     {
       title: file2?.name || "Guideline 2",
       dataIndex: "guideline2_value",
-      key: "guideline2_value",
-      width: 300,
-      render: (text) => (
-        <div className="whitespace-pre-wrap text-sm">
-          {text || <span className="text-gray-400 italic">Not present</span>}
-        </div>
-      ),
+      width: 350,
     },
-    {
-      title: "Difference",
-      dataIndex: "difference",
-      key: "difference",
-      width: 250,
-      render: (text) => (
-        <div className="whitespace-pre-wrap text-sm font-semibold">{text}</div>
-      ),
-    },
+    { title: "Difference", dataIndex: "difference", width: 300 },
   ];
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
-          <SwapOutlined />
-          Compare Guidelines
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Upload two Excel files to compare guidelines and identify differences
-        </p>
-      </div>
+    <div className="max-w-6xl mx-auto pb-10">
+      <h1 className="text-3xl font-bold flex items-center gap-2 mb-2">
+        <SwapOutlined /> Compare Guidelines
+      </h1>
 
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
-        {/* Model Selection */}
-        <Card className="mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Form.Item
-              label={
-                <span className="flex items-center gap-2">
-                  <ThunderboltOutlined />
-                  <strong>Model Provider</strong>
-                </span>
-              }
-              name="model_provider"
-              rules={[{ required: true, message: "Please select a provider" }]}
-            >
-              <Select
-                size="large"
-                onChange={(value) => {
-                  setSelectedProvider(value);
-                  form.setFieldsValue({
-                    model_name: supportedModels[value]?.[0],
-                  });
-                }}
-              >
-                <Option value="openai">
-                  <Space>
-                    <Tag color="blue">OpenAI</Tag>
-                    GPT Models
-                  </Space>
-                </Option>
-                <Option value="gemini">
-                  <Space>
-                    <Tag color="green">Google</Tag>
-                    Gemini Models
-                  </Space>
-                </Option>
-              </Select>
-            </Form.Item>
+        {/* Prompt */}
+        <Card title="Comparison Prompt" className="mb-6">
+          <Form.Item name="custom_prompt">
+            <TextArea
+              value={promptValue}
+              onChange={handlePromptChange}
+              style={{ minHeight: "420px" }}
+              className="font-mono text-sm"
+            />
+          </Form.Item>
 
-            <Form.Item
-              label={<strong>Model Name</strong>}
-              name="model_name"
-              rules={[{ required: true, message: "Please select a model" }]}
-            >
-              <Select size="large">
-                {supportedModels[selectedProvider]?.map((model) => (
-                  <Option key={model} value={model}>
-                    {model}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-          </div>
-        </Card>
+          {/* THE CONTROL ROW (Requested Layout) */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+            <Space wrap>
+              <Form.Item name="model_provider" noStyle>
+                <Select
+                  size="large"
+                  style={{ width: 170 }}
+                  onChange={(v) => {
+                    setSelectedProvider(v);
+                    form.setFieldsValue({
+                      model_name: supportedModels[v]?.[0],
+                    });
+                  }}
+                >
+                  <Option value="openai">OpenAI</Option>
+                  <Option value="gemini">Google Gemini</Option>
+                </Select>
+              </Form.Item>
 
-        {/* File Upload Section */}
-        <Card
-          className="mb-6"
-          title={
-            <>
-              <FileExcelOutlined /> Upload Excel Files to Compare
-            </>
-          }
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* File 1 */}
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-blue-400 transition">
+              <Form.Item name="model_name" noStyle>
+                <Select size="large" style={{ width: 200 }}>
+                  {supportedModels[selectedProvider]?.map((m) => (
+                    <Option key={m} value={m}>
+                      {m}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Space>
+
+            <Space wrap>
               <input
                 ref={file1InputRef}
                 type="file"
                 accept=".xlsx,.xls"
-                onChange={handleFile1Select}
-                style={{ display: "none" }}
-                disabled={processing}
+                hidden
+                onChange={(e) => setFile1(e.target.files[0])}
               />
-              <div className="text-center">
-                <div className="mb-4">
-                  <FileExcelOutlined className="text-5xl text-blue-500" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">
-                  Guideline 1 (Original)
-                </h3>
-                {!file1 ? (
-                  <Button
-                    icon={<PaperClipOutlined />}
-                    size="large"
-                    onClick={handleAttachFile1Click}
-                    disabled={processing}
-                    block
-                  >
-                    Choose First Excel File
-                  </Button>
-                ) : (
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 flex-1">
-                        <FileExcelOutlined className="text-blue-600 text-xl" />
-                        <div className="text-left flex-1">
-                          <p className="font-medium text-blue-800 truncate">
-                            {file1.name}
-                          </p>
-                          <p className="text-xs text-blue-600">
-                            {(file1.size / 1024).toFixed(2)} KB
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        type="text"
-                        danger
-                        icon={<CloseCircleOutlined />}
-                        onClick={handleRemoveFile1}
-                        disabled={processing}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+              <Button
+                icon={<PaperClipOutlined />}
+                size="large"
+                onClick={selectFile1}
+              >
+                {file1 ? file1.name : "Attach File 1"}
+              </Button>
 
-            {/* File 2 */}
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-green-400 transition">
               <input
                 ref={file2InputRef}
                 type="file"
                 accept=".xlsx,.xls"
-                onChange={handleFile2Select}
-                style={{ display: "none" }}
-                disabled={processing}
+                hidden
+                onChange={(e) => setFile2(e.target.files[0])}
               />
-              <div className="text-center">
-                <div className="mb-4">
-                  <FileExcelOutlined className="text-5xl text-green-500" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">
-                  Guideline 2 (Updated)
-                </h3>
-                {!file2 ? (
-                  <Button
-                    icon={<PaperClipOutlined />}
-                    size="large"
-                    onClick={handleAttachFile2Click}
-                    disabled={processing}
-                    block
-                  >
-                    Choose Second Excel File
-                  </Button>
-                ) : (
-                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 flex-1">
-                        <FileExcelOutlined className="text-green-600 text-xl" />
-                        <div className="text-left flex-1">
-                          <p className="font-medium text-green-800 truncate">
-                            {file2.name}
-                          </p>
-                          <p className="text-xs text-green-600">
-                            {(file2.size / 1024).toFixed(2)} KB
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        type="text"
-                        danger
-                        icon={<CloseCircleOutlined />}
-                        onClick={handleRemoveFile2}
-                        disabled={processing}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+              <Button
+                icon={<PaperClipOutlined />}
+                size="large"
+                onClick={selectFile2}
+              >
+                {file2 ? file2.name : "Attach File 2"}
+              </Button>
+
+              <Button
+                type="primary"
+                htmlType="submit"
+                size="large"
+                icon={<SendOutlined />}
+                disabled={!file1 || !file2 || processing}
+                loading={processing}
+              >
+                Compare
+              </Button>
+            </Space>
           </div>
         </Card>
-
-        {/* Comparison Prompt */}
-        <Card
-          className="mb-6"
-          title={
-            <div className="flex items-center justify-between">
-              <span className="text-base font-semibold">Comparison Prompt</span>
-              <Tooltip title="Reset to default prompt">
-                <Button
-                  type="link"
-                  icon={<ReloadOutlined />}
-                  onClick={handleResetPrompt}
-                  disabled={processing}
-                  size="small"
-                >
-                  Reset to Default
-                </Button>
-              </Tooltip>
-            </div>
-          }
-        >
-          <Form.Item
-            name="custom_prompt"
-            rules={[{ required: true, message: "Please enter a prompt" }]}
-            className="mb-0"
-          >
-            <TextArea
-              value={promptValue}
-              onChange={handlePromptChange}
-              placeholder="Enter your comparison prompt here..."
-              className="font-mono text-sm"
-              rows={10}
-              disabled={processing}
-            />
-          </Form.Item>
-        </Card>
-
-        {/* Submit Button */}
-        <div className="flex justify-end mb-6">
-          <Button
-            type="primary"
-            htmlType="submit"
-            icon={<SendOutlined />}
-            size="large"
-            loading={processing}
-            disabled={processing || !file1 || !file2}
-          >
-            {processing ? "Comparing..." : "Compare Guidelines"}
-          </Button>
-        </div>
       </Form>
 
       {/* Processing Modal */}
       <Modal
-        title={
-          <div className="flex items-center gap-2">
-            <Spin
-              indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />}
-            />
-            <span className="text-lg font-semibold">Comparing Guidelines</span>
-          </div>
-        }
         open={processingModalVisible}
         footer={null}
         closable={false}
         centered
         width={600}
       >
-        <div className="py-6">
-          <Progress
-            percent={progress}
-            status={progress === 100 ? "success" : "active"}
-            strokeColor={{ "0%": "#108ee9", "100%": "#87d068" }}
-            strokeWidth={12}
-          />
-          <div className="mt-6 text-center">
-            <p className="text-gray-600 text-base">{progressMessage}</p>
-          </div>
-          {file1 && file2 && (
-            <div className="mt-4 space-y-2">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <div className="flex items-center gap-2 text-sm text-blue-800">
-                  <FileExcelOutlined />
-                  <span>
-                    Guideline 1: <strong>{file1.name}</strong>
-                  </span>
-                </div>
-              </div>
-              <div className="p-3 bg-green-50 rounded-lg">
-                <div className="flex items-center gap-2 text-sm text-green-800">
-                  <FileExcelOutlined />
-                  <span>
-                    Guideline 2: <strong>{file2.name}</strong>
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <Progress
+          percent={progress}
+          strokeWidth={12}
+          status={progress === 100 ? "success" : "active"}
+        />
+        <p className="text-center mt-4">{progressMessage}</p>
       </Modal>
 
       {/* Preview Modal */}
       <Modal
-        title={
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2 text-lg">
-              <SwapOutlined className="text-purple-600" />
-              <span className="font-semibold">Comparison Results</span>
-            </div>
-            <Space>
-              <Button
-                type="primary"
-                icon={<DownloadOutlined />}
-                onClick={handleDownload}
-                size="large"
-              >
-                Download Comparison Excel
-              </Button>
-              <Button
-                icon={<CloseCircleOutlined />}
-                onClick={handleClosePreview}
-                size="large"
-              >
-                Close
-              </Button>
-            </Space>
-          </div>
-        }
         open={previewModalVisible}
-        width="100vw"
-        style={{ top: 0, padding: 0 }}
-        onCancel={null}
-        maskClosable={false}
         closable={false}
+        centered
         footer={null}
-        bodyStyle={{
-          padding: "24px",
-          height: "calc(100vh - 55px)",
-          overflowY: "auto",
-        }}
+        maskClosable={false}
+        width="90vw"
+        style={{ top: "5vh" }}
       >
-        {previewData ? (
-          <div>
-            <div className="mb-4 flex gap-2 flex-wrap">
-              <Tag color="green">Added</Tag>
-              <Tag color="red">Removed</Tag>
-              <Tag color="orange">Modified</Tag>
-              <Tag color="blue">Unchanged</Tag>
-            </div>
-            <div style={{ height: "calc(100vh - 350px)", minHeight: "400px" }}>
-              <Table
-                columns={tableColumns}
-                dataSource={convertToTableData(previewData)}
-                pagination={{
-                  pageSize: 50,
-                  showSizeChanger: true,
-                  showQuickJumper: true,
-                  pageSizeOptions: ["20", "50", "100"],
-                  showTotal: (total, range) =>
-                    `${range[0]}-${range[1]} of ${total} items`,
-                  position: ["bottomCenter"],
-                }}
-                scroll={{ x: "max-content", y: "calc(100vh - 450px)" }}
-                size="small"
-                bordered
-                sticky
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <Spin size="large" />
-            <p className="mt-4 text-gray-500">Loading comparison results...</p>
-          </div>
-        )}
+        <div className="flex justify-between items-center mb-4 border-b pb-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <SwapOutlined className="text-purple-600" /> Comparison Results
+          </h2>
+          <Space>
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={handleDownload}
+            >
+              Download Excel
+            </Button>
+            <Button icon={<CloseCircleOutlined />} onClick={closePreview}>
+              Close
+            </Button>
+          </Space>
+        </div>
+
+        <div style={{ height: "calc(90vh - 120px)", overflowY: "auto" }}>
+          <Table
+            dataSource={convertRows(previewData)}
+            columns={columns}
+            pagination={{ pageSize: 50 }}
+            bordered
+            size="small"
+            scroll={{ x: "max-content" }}
+          />
+        </div>
       </Modal>
     </div>
   );
