@@ -283,7 +283,7 @@ const IngestPage = () => {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-screen-2xl w-full mx-auto px-4 md:px-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
           <FileTextOutlined />
@@ -342,21 +342,17 @@ const IngestPage = () => {
           </Form.Item>
 
           {/* Bottom Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
-            {/* Provider + Model */}
-            <Space wrap>
-              <Form.Item
-                name="model_provider"
-                noStyle
-                rules={[{ required: true, message: "Select provider" }]}
-              >
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+            {/* Left Controls (Model Selects) */}
+            <Space wrap className="w-full sm:w-auto">
+              <Form.Item name="model_provider" noStyle>
                 <Select
                   size="large"
-                  style={{ width: 180 }}
-                  onChange={(value) => {
-                    setSelectedProvider(value);
+                  className="w-full sm:w-[170px]"
+                  onChange={(v) => {
+                    setSelectedProvider(v);
                     form.setFieldsValue({
-                      model_name: supportedModels[value]?.[0],
+                      model_name: supportedModels[v]?.[0],
                     });
                   }}
                 >
@@ -365,15 +361,11 @@ const IngestPage = () => {
                 </Select>
               </Form.Item>
 
-              <Form.Item
-                name="model_name"
-                noStyle
-                rules={[{ required: true, message: "Select model" }]}
-              >
-                <Select size="large" style={{ width: 220 }}>
-                  {supportedModels[selectedProvider]?.map((model) => (
-                    <Option key={model} value={model}>
-                      {model}
+              <Form.Item name="model_name" noStyle>
+                <Select size="large" className="w-full sm:w-[200px]">
+                  {supportedModels[selectedProvider]?.map((m) => (
+                    <Option key={m} value={m}>
+                      {m}
                     </Option>
                   ))}
                 </Select>
@@ -381,7 +373,10 @@ const IngestPage = () => {
             </Space>
 
             {/* File + Send */}
-            <Space>
+            <Space
+              wrap
+              className="w-full sm:w-auto justify-end sm:justify-start"
+            >
               {file ? (
                 <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200 max-w-[240px]">
                   <FileTextOutlined className="text-blue-600" />
