@@ -6,6 +6,8 @@ from PyPDF2 import PdfReader, PdfWriter
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from config import AZURE_DI_ENDPOINT, AZURE_DI_KEY
+from typing import List
+
 
 class AzureOCR:
     """Azure Document Intelligence OCR Wrapper"""
@@ -110,3 +112,35 @@ class AzureOCR:
         combined_text = "\n\n".join(results)
         print(f"✅ OCR completed! Total: {len(combined_text)} characters")
         return combined_text
+
+    
+
+    def analyze_doc_page_by_page(self, pdf_path, pages_per_chunk=1) -> List[str]:
+        """
+        Parallel OCR that returns a list of text content, one entry per chunk.
+        """
+        print(f"🚀 Starting OCR pipeline with {pages_per_chunk} page(s) per chunk...")
+        pdf_chunk_paths = self.split_pdf(pdf_path, pages_per_chunk=pages_per_chunk)
+        text_chunks = []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            future_to_chunk = {
+                executor.submit(self.analyze_chunk, chunk): chunk for chunk in pdf_chunk_paths
+            }
+
+            for future in concurrent.futures.as_completed(future_to_chunk):
+                chunk_path = future_to_chunk[future]
+                try:
+                    text = future.result()
+                    if text:
+                        text_chunks.append(text)
+                except Exception as e:
+                    print(f"❌ Error processing OCR for chunk {chunk_path}: {e}")
+
+        # Cleanup temporary PDF chunks
+        for c in pdf_chunk_paths:
+            if os.path.exists(c):
+                os.remove(c)
+
+        print(f"✅ OCR complete. Extracted {len(text_chunks)} text chunks.")
+        return text_chunks

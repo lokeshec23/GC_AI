@@ -41,6 +41,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
         stop_sequences=settings.get("stop_sequences", []),
         chunk_size=settings.get("chunk_size", 1500),
         chunk_overlap=settings.get("chunk_overlap", 200),
+        pages_per_chunk=settings.get("pages_per_chunk", 1), 
         updated_at=settings.get("updated_at", datetime.utcnow()).isoformat()
     )
 
@@ -65,6 +66,7 @@ async def update_settings(
         stop_sequences=updated_settings.get("stop_sequences"),
         chunk_size=updated_settings.get("chunk_size"),
         chunk_overlap=updated_settings.get("chunk_overlap"),
+        pages_per_chunk=updated_settings.get("pages_per_chunk"), 
         updated_at=updated_settings.get("updated_at").isoformat()
     )
 
