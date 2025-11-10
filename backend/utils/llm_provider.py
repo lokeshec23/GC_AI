@@ -86,6 +86,11 @@ class LLMProvider:
     def _generate_gemini(self, prompt: str) -> str:
         """Sends a request to the Google Gemini API."""
         print(f"📤 Calling Gemini API model: '{self.model}'")
+        api_model_name = self.model
+        api_url = f"{GEMINI_API_BASE_URL}/{api_model_name}:generateContent?key={self.api_key}"
+        
+        print(f"📤 Calling Gemini API endpoint: '{api_url.split('?')[0]}'")
+        
         model_config = get_model_config(self.model)
         effective_max_tokens = model_config.get("max_output", 8192)
         

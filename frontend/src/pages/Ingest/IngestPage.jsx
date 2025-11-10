@@ -298,10 +298,16 @@ const IngestPage = () => {
                   style={{ width: 170 }}
                   onChange={(v) => {
                     setSelectedProvider(v);
+                    // ✅ When user selects Gemini, default to the best 2.5 model
+                    const defaultModel =
+                      v === "gemini"
+                        ? "gemini-2.5-pro"
+                        : supportedModels[v]?.[0];
                     form.setFieldsValue({
-                      model_name: supportedModels[v]?.[0],
+                      model_name: defaultModel,
                     });
                   }}
+                  disabled={processing}
                 >
                   <Option value="openai">OpenAI</Option>
                   <Option value="gemini">Google Gemini</Option>
