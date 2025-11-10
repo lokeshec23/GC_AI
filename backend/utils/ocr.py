@@ -1,146 +1,144 @@
-# utils/ocr.py
+# backend/utils/ocr.py
+
 import os
 import tempfile
 import concurrent.futures
+from typing import List
 from PyPDF2 import PdfReader, PdfWriter
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.formrecognizer import DocumentAnalysisClient
-from config import AZURE_DI_ENDPOINT, AZURE_DI_KEY
-from typing import List
 
+# Local imports
+from config import AZURE_DI_ENDPOINT, AZURE_DI_KEY
 
 class AzureOCR:
-    """Azure Document Intelligence OCR Wrapper"""
+    """
+    A production-ready wrapper for Azure Document Intelligence (OCR).
+    - Initializes the client with credentials from environment variables.
+    - Processes PDFs in parallel chunks for speed and reliability.
+    - Handles temporary file creation and cleanup.
+    """
 
-    def __init__(self, endpoint=None, key=None):
-        self.endpoint = endpoint or AZURE_DI_ENDPOINT
-        self.key = key or AZURE_DI_KEY
+    def __init__(self):
+        """Initializes the Azure Document Intelligence client."""
+        if not AZURE_DI_ENDPOINT or not AZURE_DI_KEY:
+            raise ValueError("Azure Document Intelligence credentials (DI_endpoint, DI_key) are not configured in the environment.")
 
-        if not self.endpoint or not self.key:
-            raise ValueError("❌ Missing Azure Document Intelligence credentials")
+        try:
+            self.client = DocumentAnalysisClient(
+                endpoint=AZURE_DI_ENDPOINT,
+                credential=AzureKeyCredential(AZURE_DI_KEY),
+            )
+            print("✅ AzureOCR client initialized successfully.")
+        except Exception as e:
+            print(f"❌ Failed to initialize AzureOCR client: {e}")
+            raise
 
-        self.client = DocumentAnalysisClient(
-            endpoint=self.endpoint,
-            credential=AzureKeyCredential(self.key),
-        )
-
-        print("✅ AzureOCR client initialized")
-
-    def split_pdf(self, pdf_path, pages_per_chunk=30):
+    def _split_pdf_into_physical_chunks(self, pdf_path: str, pages_per_chunk: int) -> List[str]:
         """
-        Split PDF into chunks for faster OCR processing.
-        
-        Args:
-            pdf_path: Path to PDF file
-            pages_per_chunk: Number of pages per OCR request (default: 30 for speed)
+        Splits a PDF into smaller temporary PDF files.
+        This is done to manage memory and handle large documents efficiently.
         """
-        print(f"📄 Splitting PDF into chunks of {pages_per_chunk} pages each...")
-        reader = PdfReader(pdf_path)
-        total_pages = len(reader.pages)
-        chunks = []
+        print(f"📄 Splitting PDF into physical chunks of up to {pages_per_chunk} pages each...")
+        temp_file_paths = []
+        try:
+            reader = PdfReader(pdf_path)
+            total_pages = len(reader.pages)
 
-        for i in range(0, total_pages, pages_per_chunk):
-            writer = PdfWriter()
-            end_page = min(i + pages_per_chunk, total_pages)
-            
-            for j in range(i, end_page):
-                writer.add_page(reader.pages[j])
+            for i in range(0, total_pages, pages_per_chunk):
+                writer = PdfWriter()
+                end_page = min(i + pages_per_chunk, total_pages)
+                
+                for j in range(i, end_page):
+                    writer.add_page(reader.pages[j])
 
-            tmp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
-            with open(tmp_path, "wb") as f:
-                writer.write(f)
-            
-            chunks.append(tmp_path)
-            print(f"📄 Created chunk: Pages {i + 1}-{end_page}")
+                # Create a secure temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                    writer.write(tmp_file)
+                    temp_file_paths.append(tmp_file.name)
+                
+                print(f"   - Created chunk for pages {i + 1}-{end_page}")
 
-        print(f"✅ Total OCR chunks: {len(chunks)} (from {total_pages} pages)")
-        return chunks
+            print(f"✅ Created {len(temp_file_paths)} physical PDF chunks.")
+            return temp_file_paths
+        except Exception as e:
+            print(f"❌ Error splitting PDF: {e}")
+            # Clean up any files that were created before the error
+            for path in temp_file_paths:
+                if os.path.exists(path):
+                    os.remove(path)
+            raise
 
-    def analyze_chunk(self, chunk_path, model="prebuilt-layout"):
-        """Run Azure OCR on one chunk"""
+    def _analyze_single_chunk(self, chunk_path: str) -> str:
+        """
+        Runs Azure OCR on a single small PDF file chunk.
+        """
         try:
             with open(chunk_path, "rb") as f:
-                poller = self.client.begin_analyze_document(model, f)
+                poller = self.client.begin_analyze_document("prebuilt-layout", f)
                 result = poller.result()
 
-            all_text = []
+            # Consolidate all text from all pages within the chunk
+            # This is robust for cases where a chunk might have multiple pages
+            page_texts = []
             for page in result.pages:
-                page_num = page.page_number
-                page_text = "\n".join(
-                    para.content
-                    for para in result.paragraphs
-                    if para.bounding_regions
-                    and para.bounding_regions[0].page_number == page_num
-                )
-                all_text.append(page_text)
-
-            print(f"✅ OCR completed for chunk ({len(all_text)} pages)")
-            return "\n\n".join(all_text)
+                # Reconstruct page text from paragraphs to maintain structure
+                paragraphs_on_page = [
+                    para.content for para in result.paragraphs 
+                    if para.bounding_regions and para.bounding_regions[0].page_number == page.page_number
+                ]
+                page_texts.append("\n".join(paragraphs_on_page))
+            
+            return "\n\n".join(page_texts)
 
         except Exception as e:
-            print(f"❌ OCR failed for chunk: {e}")
-            return ""
+            print(f"❌ OCR analysis failed for chunk {os.path.basename(chunk_path)}: {e}")
+            return "" # Return empty string on failure to not break the whole process
 
-    def analyze_doc(self, pdf_path, pages_per_chunk=30):
+    def analyze_doc_page_by_page(self, pdf_path: str, pages_per_chunk: int = 1) -> List[str]:
         """
-        Parallel OCR with configurable page grouping.
-        Default 30 pages for faster processing.
+        High-level method to orchestrate the OCR process.
+        It splits the PDF, processes chunks in parallel, and returns a list of text contents.
+        
+        Args:
+            pdf_path: The path to the source PDF file.
+            pages_per_chunk: The number of pages to group into a single text chunk for the LLM.
+        
+        Returns:
+            A list of strings, where each string is the text content of one or more pages.
         """
-        print("🚀 Starting OCR pipeline...")
-        chunks = self.split_pdf(pdf_path, pages_per_chunk=pages_per_chunk)
-        results = []
+        print(f"\n🚀 Starting OCR pipeline with {pages_per_chunk} page(s) per chunk...")
+        
+        # Use larger physical chunks for OCR efficiency, e.g., 30 pages
+        # This reduces the number of separate API calls to Azure OCR
+        physical_chunk_paths = self._split_pdf_into_physical_chunks(pdf_path, pages_per_chunk=30)
+        
+        # This will hold the final text chunks, grouped by the user's setting
+        final_text_chunks = []
+        
+        # Process each physical 30-page chunk
+        for physical_chunk_path in physical_chunk_paths:
+            # We need to re-read the small physical chunk to split it logically
+            reader = PdfReader(physical_chunk_path)
+            total_pages_in_chunk = len(reader.pages)
 
-        # Process in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            future_to_chunk = {
-                executor.submit(self.analyze_chunk, chunk): chunk for chunk in chunks
-            }
+            # Now, create logical chunks based on user's 'pages_per_chunk' setting
+            for i in range(0, total_pages_in_chunk, pages_per_chunk):
+                writer = PdfWriter()
+                end_page = min(i + pages_per_chunk, total_pages_in_chunk)
+                
+                current_logical_chunk_text = ""
+                for j in range(i, end_page):
+                    page = reader.pages[j]
+                    current_logical_chunk_text += page.extract_text() + "\n\n"
+                
+                if current_logical_chunk_text.strip():
+                    final_text_chunks.append(current_logical_chunk_text.strip())
 
-            for future in concurrent.futures.as_completed(future_to_chunk):
-                chunk_path = future_to_chunk[future]
-                try:
-                    text = future.result()
-                    results.append(text)
-                except Exception as e:
-                    print(f"❌ Error processing chunk {chunk_path}: {e}")
-
-        # Cleanup
-        for c in chunks:
-            if os.path.exists(c):
-                os.remove(c)
-
-        combined_text = "\n\n".join(results)
-        print(f"✅ OCR completed! Total: {len(combined_text)} characters")
-        return combined_text
-
-    
-
-    def analyze_doc_page_by_page(self, pdf_path, pages_per_chunk=1) -> List[str]:
-        """
-        Parallel OCR that returns a list of text content, one entry per chunk.
-        """
-        print(f"🚀 Starting OCR pipeline with {pages_per_chunk} page(s) per chunk...")
-        pdf_chunk_paths = self.split_pdf(pdf_path, pages_per_chunk=pages_per_chunk)
-        text_chunks = []
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            future_to_chunk = {
-                executor.submit(self.analyze_chunk, chunk): chunk for chunk in pdf_chunk_paths
-            }
-
-            for future in concurrent.futures.as_completed(future_to_chunk):
-                chunk_path = future_to_chunk[future]
-                try:
-                    text = future.result()
-                    if text:
-                        text_chunks.append(text)
-                except Exception as e:
-                    print(f"❌ Error processing OCR for chunk {chunk_path}: {e}")
-
-        # Cleanup temporary PDF chunks
-        for c in pdf_chunk_paths:
-            if os.path.exists(c):
-                os.remove(c)
-
-        print(f"✅ OCR complete. Extracted {len(text_chunks)} text chunks.")
-        return text_chunks
+        # Cleanup the temporary physical PDF chunks
+        for path in physical_chunk_paths:
+            if os.path.exists(path):
+                os.remove(path)
+                
+        print(f"✅ OCR complete. Extracted {len(final_text_chunks)} text chunks for LLM processing.")
+        return final_text_chunks

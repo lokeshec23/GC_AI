@@ -1,31 +1,31 @@
-# ingest/schemas.py
-from pydantic import BaseModel, Field
+# backend/ingest/schemas.py
+
+from pydantic import BaseModel
 from typing import Optional
 
 class IngestRequest(BaseModel):
-    """Request model for ingesting a guideline"""
-    model_provider: str = Field(..., description="'openai' or 'gemini'")
-    model_name: str = Field(..., description="Model to use (e.g., 'gpt-4o', 'gemini-1.5-pro')")
-    custom_prompt: str = Field(..., description="User's custom extraction prompt")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "model_provider": "openai",
-                "model_name": "gpt-4o",
-                "custom_prompt": "Extract all eligibility rules and conditions from this mortgage guideline. Output JSON format with section names as keys."
-            }
-        }
+    """
+    Defines the expected data for an ingestion request.
+    This is sent from the frontend as form data.
+    """
+    model_provider: str
+    model_name: str
+    custom_prompt: str
 
 class IngestResponse(BaseModel):
-    """Response after starting ingestion"""
+    """
+    Defines the initial response sent back to the frontend
+    after an ingestion job has started.
+    """
     status: str
     message: str
     session_id: str
 
 class ProcessingStatus(BaseModel):
-    """Status of a processing job"""
-    status: str  # "processing", "completed", "failed"
+    """
+    Defines the structure for checking the status of a running job.
+    """
+    status: str  # e.g., "processing", "completed", "failed"
     progress: int
     message: str
     result_url: Optional[str] = None

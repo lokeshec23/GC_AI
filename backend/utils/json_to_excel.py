@@ -1,86 +1,101 @@
-# utils/json_to_excel.py
+# backend/utils/json_to_excel.py
+
+import json
 from typing import List, Dict
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
-def validate_and_convert_to_excel(json_data: List[Dict], output_path: str) -> str:
+def dynamic_json_to_excel(json_data: List[Dict], output_path: str) -> str:
     """
-    Convert validated JSON array to Excel with proper formatting.
-    
+    Dynamically converts a list of JSON objects (dictionaries) into a
+    formatted Excel file. The columns are inferred from the keys of the
+    first object in the list.
+
     Args:
-        json_data: List of dicts with keys: major_section, subsection, summary
-        output_path: Path to save Excel file
-    
+        json_data: A list of dictionaries, where each dictionary represents a row.
+        output_path: The full path where the Excel file will be saved.
+
     Returns:
-        Path to created Excel file
+        The path to the created Excel file.
     """
     
-    print(f"📊 Converting {len(json_data)} rows to Excel...")
-    
-    # Create workbook
+    if not json_data:
+        print("⚠️ No data provided to write to Excel. Creating an empty file.")
+        wb = Workbook()
+        ws = wb.active
+        ws['A1'] = "No structured data was extracted or generated."
+        wb.save(output_path)
+        return output_path
+
+    print(f"📊 Dynamically converting {len(json_data)} items to Excel...")
+
+    # Infer headers from the keys of the first valid object in the list
+    try:
+        headers = list(json_data[0].keys())
+        print(f"   Inferred Headers: {headers}")
+    except (IndexError, AttributeError):
+        print("⚠️ JSON data is empty or not a list of dictionaries. Creating an empty file.")
+        return dynamic_json_to_excel([], output_path)
+
+
     wb = Workbook()
     ws = wb.active
-    ws.title = "Extracted Guidelines"
-    
-    # Define styles
-    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    ws.title = "Extraction Results"
+
+    # --- Styling ---
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF", size=12)
-    section_fill = PatternFill(start_color="E8F4F8", end_color="E8F4F8", fill_type="solid")
-    section_font = Font(bold=True, size=11, color="1F4E78")
-    
     border_thin = Border(
-        left=Side(style='thin', color='CCCCCC'),
-        right=Side(style='thin', color='CCCCCC'),
-        top=Side(style='thin', color='CCCCCC'),
-        bottom=Side(style='thin', color='CCCCCC')
+        left=Side(style='thin', color='D9D9D9'),
+        right=Side(style='thin', color='D9D9D9'),
+        top=Side(style='thin', color='D9D9D9'),
+        bottom=Side(style='thin', color='D9D9D9')
     )
-    
-    # Write headers
-    headers = ["Major Section Title", "Subsection Title", "Summary / Key Requirements"]
-    for col_num, header in enumerate(headers, 1):
+
+    # --- Write Headers ---
+    for col_num, header_title in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_num)
-        cell.value = header
+        # Format the header title (e.g., "major_section" -> "Major Section")
+        cell.value = str(header_title).replace("_", " ").title()
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
         cell.border = border_thin
-    
-    # Write data rows
-    current_row = 2
-    for item in json_data:
-        major_section = item.get("major_section", "")
-        subsection = item.get("subsection", "")
-        summary = item.get("summary", "")
-        
-        # Write cells
-        ws.cell(row=current_row, column=1).value = major_section
-        ws.cell(row=current_row, column=2).value = subsection
-        ws.cell(row=current_row, column=3).value = summary
-        
-        # Apply styling
-        for col_num in range(1, 4):
-            cell = ws.cell(row=current_row, column=col_num)
+
+    # --- Write Data Rows ---
+    for row_num, item in enumerate(json_data, 2):
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=row_num, column=col_num)
+            value = item.get(header)
+            
+            # Convert complex types (lists, dicts) to a readable string format
+            if isinstance(value, (list, dict)):
+                try:
+                    cell.value = json.dumps(value, indent=2)
+                except TypeError:
+                    cell.value = str(value)
+            else:
+                cell.value = str(value) if value is not None else ""
+            
             cell.border = border_thin
             cell.alignment = Alignment(wrap_text=True, vertical='top')
-            
-            # Highlight section headers (rows where subsection is empty)
-            if major_section and not subsection:
-                cell.fill = section_fill
-                if col_num == 1:
-                    cell.font = section_font
-        
-        current_row += 1
-    
-    # Set column widths
-    ws.column_dimensions['A'].width = 35
-    ws.column_dimensions['B'].width = 35
-    ws.column_dimensions['C'].width = 70
-    
-    # Freeze header row
+
+    # --- Auto-fit Column Widths ---
+    for col_num, header in enumerate(headers, 1):
+        column_letter = get_column_letter(col_num)
+        # Set a reasonable default width, as auto-sizing can be slow and imperfect
+        ws.column_dimensions[column_letter].width = 35
+
+    # Freeze the header row so it's always visible when scrolling
     ws.freeze_panes = 'A2'
     
-    # Save workbook
-    wb.save(output_path)
-    print(f"✅ Excel file created: {output_path}")
-    
+    # --- Save Workbook ---
+    try:
+        wb.save(output_path)
+        print(f"✅ Dynamic Excel file created successfully: {output_path}")
+    except Exception as e:
+        print(f"❌ Failed to save Excel file: {e}")
+        raise
+
     return output_path

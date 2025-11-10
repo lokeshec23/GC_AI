@@ -1,3 +1,5 @@
+// src/pages/Ingest/IngestPage.jsx
+
 import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
@@ -13,13 +15,16 @@ import {
   Modal,
   Spin,
   Tooltip,
+  Divider,
 } from "antd";
 import {
   PaperClipOutlined,
   SendOutlined,
   FileTextOutlined,
   DownloadOutlined,
+  ThunderboltOutlined,
   CloseCircleOutlined,
+  EyeOutlined,
   FileExcelOutlined,
   LoadingOutlined,
   ReloadOutlined,
@@ -29,44 +34,32 @@ import { ingestAPI, settingsAPI } from "../../services/api";
 const { TextArea } = Input;
 const { Option } = Select;
 
-const DEFAULT_PROMPT = `You are an expert U.S. mortgage underwriting analyst.
-You will be given text from a mortgage guideline document.
-Your job is to extract and structure it into clean, valid JSON.
+const DEFAULT_PROMPT = `You are an expert mortgage guideline analyst. Your task is to extract key information from the provided text and structure it as a clean, valid JSON array.
 
 INSTRUCTIONS:
-1. Identify major sections and subsections based on titles, numbering, or formatting.
-2. For each major section, provide a brief 2-3 line summary.
-3. For each subsection, extract the key rules, requirements, or eligibility criteria in 2-3 lines.
-4. Keep all section and subsection titles exactly as written in the original text.
-5. Do NOT add, guess, or infer information not present in the source.
-6. Maintain the original hierarchy and document order.
+1. Analyze the text to identify distinct rules, sections, or data points.
+2. For each distinct item, create a JSON object.
+3. The structure of the JSON objects should be consistent. You decide on the best keys (e.g., "section", "rule_id", "requirement", "details").
 
-OUTPUT FORMAT (JSON ONLY):
-Return a JSON array where each object represents a row with these fields:
-- "major_section": The main section title (string)
-- "subsection": The subsection title or empty string if it's a section header (string)
-- "summary": The summary or key requirements (string)
-
-Example:
+EXAMPLE OUTPUT STRUCTURE (You can adapt this):
 [
   {
-    "major_section": "301. Non-U.S. Citizen Eligibility",
-    "subsection": "",
-    "summary": "This section covers eligibility requirements for non-U.S. citizens applying for mortgage loans."
+    "category": "Loan Eligibility",
+    "topic": "Credit Score",
+    "requirement": "A minimum FICO score of 620 is required for all borrowers."
   },
   {
-    "major_section": "301. Non-U.S. Citizen Eligibility",
-    "subsection": "Work Permit Requirements",
-    "summary": "Borrower must have valid work permit or visa. Minimum 3 years of work history required."
+    "category": "Property",
+    "topic": "Appraisal",
+    "requirement": "A full appraisal dated within the last 90 days is mandatory."
   }
 ]
 
-CRITICAL:
-- Output ONLY valid JSON array
-- No markdown, no code blocks, no explanations
-- Start with [ and end with ]
-- Ensure all JSON is properly escaped
-- Each object must have all three fields (use empty string "" if not applicable)`;
+CRITICAL RULES:
+- The final output MUST be a single, valid JSON array.
+- Do not include any text, explanations, or markdown outside of the JSON array.
+- Start your response with '[' and end it with ']'.
+- Ensure all strings within the JSON are properly escaped.`;
 
 const IngestPage = () => {
   const [form] = Form.useForm();
@@ -84,27 +77,18 @@ const IngestPage = () => {
   const [promptValue, setPromptValue] = useState(DEFAULT_PROMPT);
   const [processingModalVisible, setProcessingModalVisible] = useState(false);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
+  const [tableColumns, setTableColumns] = useState([]);
 
   const fileInputRef = useRef(null);
-  const sseRef = useRef(null);
 
   useEffect(() => {
     fetchSupportedModels();
-
     form.setFieldsValue({
       model_provider: "openai",
       model_name: "gpt-4o",
       custom_prompt: DEFAULT_PROMPT,
     });
-
     setPromptValue(DEFAULT_PROMPT);
-
-    return () => {
-      // cleanup SSE on unmount if still open
-      try {
-        sseRef.current?.close?.();
-      } catch {}
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -136,28 +120,18 @@ const IngestPage = () => {
   };
 
   const handleAttachClick = () => fileInputRef.current?.click();
-
   const handleResetPrompt = () => {
     setPromptValue(DEFAULT_PROMPT);
     form.setFieldsValue({ custom_prompt: DEFAULT_PROMPT });
     message.success("Prompt reset to default");
   };
 
-  const handlePromptChange = (e) => {
-    setPromptValue(e.target.value);
-  };
+  const handlePromptChange = (e) => setPromptValue(e.target.value);
 
   const handleSubmit = async (values) => {
-    if (!file) {
-      message.error("Please upload a PDF file");
-      return;
-    }
-
+    if (!file) return message.error("Please attach a PDF file.");
     const currentPrompt = promptValue.trim();
-    if (!currentPrompt) {
-      message.error("Please enter a prompt");
-      return;
-    }
+    if (!currentPrompt) return message.error("Please enter a prompt.");
 
     try {
       setProcessing(true);
@@ -175,132 +149,108 @@ const IngestPage = () => {
       const response = await ingestAPI.ingestGuideline(formData);
       const { session_id } = response.data;
       setSessionId(session_id);
-
       message.success("Processing started!");
 
       const eventSource = ingestAPI.createProgressStream(session_id);
-      sseRef.current = eventSource;
-
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         setProgress(data.progress);
         setProgressMessage(data.message);
-
         if (data.progress >= 100) {
           eventSource.close();
           setProcessing(false);
           setProcessingModalVisible(false);
           fetchPreviewData(session_id);
-          sseRef.current = null;
           message.success("Processing complete!");
         }
       };
-
-      eventSource.onerror = (error) => {
-        // graceful failure
-        console.error("SSE Error:", error);
-        try {
-          eventSource.close();
-        } catch {}
+      eventSource.onerror = () => {
+        eventSource.close();
         setProcessing(false);
         setProcessingModalVisible(false);
-        message.error("Connection lost. Please check status manually.");
-        sseRef.current = null;
+        message.error("Connection error. Please try again.");
       };
     } catch (error) {
       setProcessing(false);
       setProcessingModalVisible(false);
-      console.error("Submit error:", error);
-      message.error(error.response?.data?.detail || "Processing failed");
+      message.error(
+        error.response?.data?.detail || "Failed to start processing."
+      );
     }
   };
 
   const fetchPreviewData = async (sid) => {
     try {
       const response = await ingestAPI.getPreview(sid);
-      setPreviewData(response.data);
+      const data = response.data;
+      if (data && data.length > 0) {
+        const firstItemKeys = Object.keys(data[0]);
+        const columns = firstItemKeys.map((key) => ({
+          title: key
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (l) => l.toUpperCase()),
+          dataIndex: key,
+          key: key,
+          width: 250,
+          render: (text) => (
+            <div className="whitespace-pre-wrap text-sm">{String(text)}</div>
+          ),
+        }));
+        setTableColumns(columns);
+        setPreviewData(data);
+      } else {
+        setTableColumns([{ title: "Result", dataIndex: "content" }]);
+        setPreviewData([
+          {
+            key: "1",
+            content: "No structured data was extracted from the document.",
+          },
+        ]);
+      }
       setPreviewModalVisible(true);
     } catch (error) {
-      console.error("Failed to fetch preview:", error);
-      message.error("Failed to load preview data");
+      message.error("Failed to load preview data.");
     }
   };
 
   const handleDownload = () => {
     if (sessionId) {
-      message.success("Downloading Excel file...");
+      message.loading("Preparing download...", 1);
       ingestAPI.downloadExcel(sessionId);
-    } else {
-      message.warning("No session to download from");
     }
   };
 
   const handleClosePreview = () => {
     setPreviewModalVisible(false);
     setPreviewData(null);
+    setTableColumns([]);
     setSessionId(null);
   };
 
   const convertToTableData = (data) => {
     if (!data || !Array.isArray(data)) return [];
-    return data.map((item, idx) => ({
-      key: idx,
-      major_section: item.major_section || "",
-      subsection: item.subsection || "",
-      summary: item.summary || "",
-    }));
+    return data.map((item, idx) => ({ key: idx, ...item }));
   };
-
-  const tableColumns = [
-    {
-      title: "Major Section Title",
-      dataIndex: "major_section",
-      key: "major_section",
-      width: "30%",
-      render: (text, record) => (
-        <span
-          className={
-            text && !record.subsection ? "font-bold text-blue-700" : ""
-          }
-        >
-          {text}
-        </span>
-      ),
-    },
-    {
-      title: "Subsection Title",
-      dataIndex: "subsection",
-      key: "subsection",
-      width: "30%",
-    },
-    {
-      title: "Summary / Key Requirements",
-      dataIndex: "summary",
-      key: "summary",
-      width: "40%",
-      render: (text) => <div className="whitespace-pre-wrap">{text}</div>,
-    },
-  ];
 
   return (
     <div className="max-w-screen-2xl w-full mx-auto px-4 md:px-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
-          <FileTextOutlined />
-          Ingest Guideline
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold font-poppins text-gray-800 flex items-center gap-3">
+          <FileTextOutlined /> Ingest Guideline
         </h1>
-        <p className="text-gray-600 mt-2">
-          Upload a PDF guideline and extract rules using a custom prompt
+        <p className="text-gray-500 mt-2 text-base">
+          Upload a PDF, define your desired JSON structure in the prompt, and
+          extract the data.
         </p>
       </div>
 
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
-        {/* Prompt + Controls Card */}
         <Card
-          className="mb-6"
           title={
             <div className="flex items-center justify-between">
-              <span className="text-base font-semibold">Extraction Prompt</span>
+              <span className="text-base font-semibold">
+                Extraction Command Center
+              </span>
               <Tooltip title="Reset to default prompt">
                 <Button
                   type="link"
@@ -309,13 +259,12 @@ const IngestPage = () => {
                   disabled={processing}
                   size="small"
                 >
-                  Reset to Default
+                  Reset Prompt
                 </Button>
               </Tooltip>
             </div>
           }
         >
-          {/* Hidden file input */}
           <input
             ref={fileInputRef}
             type="file"
@@ -324,8 +273,6 @@ const IngestPage = () => {
             hidden
             disabled={processing}
           />
-
-          {/* Full-width prompt */}
           <Form.Item
             name="custom_prompt"
             rules={[{ required: true, message: "Please enter a prompt" }]}
@@ -334,21 +281,21 @@ const IngestPage = () => {
             <TextArea
               value={promptValue}
               onChange={handlePromptChange}
-              placeholder="Enter your extraction prompt here..."
+              placeholder="Describe the JSON structure you want..."
               className="font-mono text-sm resize-none"
               style={{ minHeight: "420px", width: "100%" }}
               disabled={processing}
             />
           </Form.Item>
 
-          {/* Bottom Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
-            {/* Left Controls (Model Selects) */}
-            <Space wrap className="w-full sm:w-auto">
+          <Divider />
+
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <Space wrap>
               <Form.Item name="model_provider" noStyle>
                 <Select
                   size="large"
-                  className="w-full sm:w-[170px]"
+                  style={{ width: 170 }}
                   onChange={(v) => {
                     setSelectedProvider(v);
                     form.setFieldsValue({
@@ -360,9 +307,8 @@ const IngestPage = () => {
                   <Option value="gemini">Google Gemini</Option>
                 </Select>
               </Form.Item>
-
               <Form.Item name="model_name" noStyle>
-                <Select size="large" className="w-full sm:w-[200px]">
+                <Select size="large" style={{ width: 200 }}>
                   {supportedModels[selectedProvider]?.map((m) => (
                     <Option key={m} value={m}>
                       {m}
@@ -371,12 +317,7 @@ const IngestPage = () => {
                 </Select>
               </Form.Item>
             </Space>
-
-            {/* File + Send */}
-            <Space
-              wrap
-              className="w-full sm:w-auto justify-end sm:justify-start"
-            >
+            <Space>
               {file ? (
                 <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200 max-w-[240px]">
                   <FileTextOutlined className="text-blue-600" />
@@ -396,14 +337,13 @@ const IngestPage = () => {
                 <Button
                   icon={<PaperClipOutlined />}
                   size="large"
-                  className="flex items-center gap-2"
+                  className="flex items-center"
                   disabled={processing}
                   onClick={handleAttachClick}
                 >
                   Attach PDF
                 </Button>
               )}
-
               <Button
                 type="primary"
                 htmlType="submit"
@@ -411,20 +351,14 @@ const IngestPage = () => {
                 size="large"
                 loading={processing}
                 disabled={processing || !file}
-                className="flex items-center gap-2"
               >
-                {processing ? "Processing..." : "Send"}
+                {processing ? "Processing..." : "Extract Data"}
               </Button>
             </Space>
-          </div>
-
-          <div className="mt-3 text-xs text-gray-500 flex items-center gap-2">
-            💡 <span>Attach a PDF file and click Send to start processing</span>
           </div>
         </Card>
       </Form>
 
-      {/* Processing Modal (restored) */}
       <Modal
         title={
           <div className="flex items-center gap-2">
@@ -443,17 +377,18 @@ const IngestPage = () => {
         <div className="py-6">
           <Progress
             percent={progress}
-            status={progress === 100 ? "success" : "active"}
-            strokeColor={{
-              "0%": "#108ee9",
-              "100%": "#87d068",
-            }}
+            status={
+              progress < 0
+                ? "exception"
+                : progress === 100
+                ? "success"
+                : "active"
+            }
             strokeWidth={12}
           />
           <div className="mt-6 text-center">
             <p className="text-gray-600 text-base">{progressMessage}</p>
           </div>
-
           {file && (
             <div className="mt-4 p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -467,23 +402,21 @@ const IngestPage = () => {
         </div>
       </Modal>
 
-      {/* Preview as centered Modal (90% width/height, no outside close) */}
       <Modal
         open={previewModalVisible}
         footer={null}
         closable={false}
         centered
-        width="90vw"
-        style={{ top: "5vh", padding: 0 }}
+        width="95vw"
+        style={{ top: "2.5vh", padding: 0 }}
         maskClosable={false}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <FileExcelOutlined className="text-green-600 text-xl" />
             <span className="font-semibold text-lg">Extraction Results</span>
             <Tag color="blue">
-              {convertToTableData(previewData).length} rows
+              {convertToTableData(previewData).length} rows extracted
             </Tag>
           </div>
           <Space>
@@ -504,37 +437,31 @@ const IngestPage = () => {
             </Button>
           </Space>
         </div>
-
-        {/* Body */}
         <div
           style={{
-            height: "calc(90vh - 76px)", // header ~76px
-            overflowY: "auto",
+            height: "calc(95vh - 76px)",
+            overflow: "hidden",
             padding: "16px 24px",
           }}
         >
           {previewData ? (
-            <Table
-              columns={tableColumns}
-              dataSource={convertToTableData(previewData)}
-              pagination={{
-                pageSize: 100,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                pageSizeOptions: ["50", "100", "200", "500"],
-                showTotal: (total, range) =>
-                  `${range[0]}-${range[1]} of ${total} rows`,
-              }}
-              scroll={{ x: "max-content" }}
-              size="small"
-              bordered
-              sticky
-              rowClassName={(record) =>
-                record.major_section && !record.subsection
-                  ? "bg-blue-50 font-semibold"
-                  : ""
-              }
-            />
+            <div className="h-full overflow-auto">
+              <Table
+                columns={tableColumns}
+                dataSource={convertToTableData(previewData)}
+                pagination={{
+                  pageSize: 100,
+                  showSizeChanger: true,
+                  pageSizeOptions: ["50", "100", "200"],
+                  showTotal: (total, range) =>
+                    `${range[0]}-${range[1]} of ${total} rows`,
+                }}
+                scroll={{ x: "max-content", y: "calc(95vh - 200px)" }}
+                size="small"
+                bordered
+                sticky
+              />
+            </div>
           ) : (
             <div className="h-full flex items-center justify-center">
               <Spin size="large" tip="Loading preview..." />
