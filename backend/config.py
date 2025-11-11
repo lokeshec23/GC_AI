@@ -6,7 +6,7 @@ from typing import Dict
 
 # --- MongoDB Configuration ---
 MONGO_URI: str = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-DB_NAME: str = os.getenv("DB_NAME", "guidelines_extraction_db")
+DB_NAME: str = os.getenv("DB_NAME", "GC_AI_DB")
 
 # --- JWT Authentication ---
 JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "a-very-secret-key-that-should-be-changed")
@@ -27,23 +27,31 @@ SUPPORTED_MODELS: Dict[str, list] = {
         "gpt-4",
         "gpt-3.5-turbo"
     ],
-    # ✅ UPDATED: Only show Gemini 2.5 series models
+    # ✅ UPDATED: New Gemini and Gemma models from your image
     "gemini": [
-        "gemini-2.5-pro",    # The most capable model
-        "gemini-2.5-flash",  # The fastest multi-modal model
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-preview-09-2025",
+        "gemini-2.5-flash-lite-preview-09-2025", # Assuming full name
+        "gemma-3-27b-it",
+        "gemini-2.0-flash-001",
     ]
 }
 
 MODEL_TOKEN_LIMITS: Dict[str, dict] = {
-    # OpenAI Models (no changes)
+    # OpenAI Models
     "gpt-4o": {"max_input": 128000, "max_output": 16384, "recommended_chunk": 6000},
     "gpt-4-turbo": {"max_input": 128000, "max_output": 4096, "recommended_chunk": 5000},
     "gpt-4": {"max_input": 8192, "max_output": 4096, "recommended_chunk": 2000},
     "gpt-3.5-turbo": {"max_input": 16385, "max_output": 4096, "recommended_chunk": 3000},
     
-    # ✅ UPDATED: Configurations for the Gemini 2.5 models
+    # ✅ UPDATED: Configurations for the new Gemini and Gemma models
     "gemini-2.5-pro": {"max_input": 1048576, "max_output": 8192, "recommended_chunk": 8000},
     "gemini-2.5-flash": {"max_input": 1048576, "max_output": 8192, "recommended_chunk": 4000},
+    "gemini-2.5-flash-preview-09-2025": {"max_input": 1048576, "max_output": 8192, "recommended_chunk": 4000},
+    "gemini-2.5-flash-lite-preview-09-2025": {"max_input": 1048576, "max_output": 8192, "recommended_chunk": 4000},
+    "gemma-3-27b-it": {"max_input": 8192, "max_output": 8192, "recommended_chunk": 2000}, # Gemma has different limits
+    "gemini-2.0-flash-001": {"max_input": 1048576, "max_output": 8192, "recommended_chunk": 4000},
 }
 
 # Gemini API

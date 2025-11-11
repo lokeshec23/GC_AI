@@ -10,21 +10,17 @@ from config import get_model_config, GEMINI_API_BASE_URL
 class LLMProvider:
     """
     A unified and robust provider for communicating with different LLM APIs.
-    - Handles Azure OpenAI and Google Gemini.
-    - Implements specific logic for each provider's API.
-    - Includes detailed logging for debugging.
     """
     
     def __init__(
         self,
         provider: str,
         api_key: str,
-        model: str,  # For Gemini, this is the model name; for Azure, it's a reference
+        model: str,
         temperature: float = 0.5,
         max_tokens: int = 8192,
         top_p: float = 1.0,
         stop_sequences: Optional[List[str]] = None,
-        # Azure-specific parameters
         azure_endpoint: Optional[str] = None,
         azure_deployment: Optional[str] = None,
     ):
@@ -35,22 +31,25 @@ class LLMProvider:
         self.top_p = top_p
         self.stop_sequences = stop_sequences or []
         
+        # ✅ CORRECTED: Save the api_key to the instance
+        self.api_key = api_key
+        
         if self.provider == "openai":
             if not azure_endpoint or not azure_deployment or not api_key:
                 raise ValueError("Azure OpenAI requires API key, endpoint, and deployment name.")
             
             self.client = AzureOpenAI(
-                api_key=api_key,
-                api_version="2024-02-01", # A stable API version
+                api_key=self.api_key, # Use self.api_key for consistency
+                api_version="2024-02-01",
                 azure_endpoint=azure_endpoint
             )
             self.deployment = azure_deployment
             print(f"✅ Azure OpenAI client initialized for deployment: '{self.deployment}'")
             
         elif self.provider == "gemini":
-            if not api_key:
+            if not self.api_key:
                 raise ValueError("Gemini requires an API key.")
-            self.api_url = f"{GEMINI_API_BASE_URL}/{model}:generateContent?key={api_key}"
+            # The URL will be constructed in the generate method
             print(f"✅ Gemini API client configured for model: '{self.model}'")
         else:
             raise ValueError(f"Unsupported LLM provider: '{self.provider}'")
@@ -61,7 +60,6 @@ class LLMProvider:
             return self._generate_azure_openai(prompt)
         elif self.provider == "gemini":
             return self._generate_gemini(prompt)
-        # This should not be reached due to the check in __init__
         raise NotImplementedError(f"Generation for provider '{self.provider}' is not implemented.")
 
     def _generate_azure_openai(self, prompt: str) -> str:
@@ -69,7 +67,7 @@ class LLMProvider:
         print(f"📤 Calling Azure OpenAI deployment: '{self.deployment}'")
         try:
             response = self.client.chat.completions.create(
-                model=self.deployment, # Use the deployment name here
+                model=self.deployment,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
@@ -85,9 +83,8 @@ class LLMProvider:
 
     def _generate_gemini(self, prompt: str) -> str:
         """Sends a request to the Google Gemini API."""
-        print(f"📤 Calling Gemini API model: '{self.model}'")
-        api_model_name = self.model
-        api_url = f"{GEMINI_API_BASE_URL}/{api_model_name}:generateContent?key={self.api_key}"
+        
+        api_url = f"{GEMINI_API_BASE_URL}/{self.model}:generateContent?key={self.api_key}"
         
         print(f"📤 Calling Gemini API endpoint: '{api_url.split('?')[0]}'")
         
@@ -106,8 +103,8 @@ class LLMProvider:
         }
         
         try:
-            response = requests.post(self.api_url, headers=headers, json=payload, timeout=180)
-            response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
+            response = requests.post(api_url, headers=headers, json=payload, timeout=180)
+            response.raise_for_status()
             
             result = response.json()
             
@@ -129,6 +126,9 @@ class LLMProvider:
                 return text_response
 
             raise ValueError("Unexpected Gemini response format: No text content found.")
+        except requests.exceptions.HTTPError as e:
+            print(f"   ❌ Gemini API HTTP Error: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Gemini API call failed with status {e.response.status_code}.")
         except requests.exceptions.RequestException as e:
             print(f"   ❌ Gemini API request failed: {e}")
             raise Exception(f"Network error while calling Gemini API: {e}")

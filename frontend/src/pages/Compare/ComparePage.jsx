@@ -89,7 +89,7 @@ const ComparePage = () => {
     fetchModels();
     form.setFieldsValue({
       model_provider: "openai",
-      model_name: "gpt-4o",
+      model_name: "gpt-4o", // Keep OpenAI default
       custom_prompt: DEFAULT_COMPARISON_PROMPT,
     });
     setPromptValue(DEFAULT_COMPARISON_PROMPT);
@@ -247,8 +247,13 @@ const ComparePage = () => {
                   style={{ width: 170 }}
                   onChange={(v) => {
                     setSelectedProvider(v);
+                    // ✅ When user selects Gemini, default to the best model from the new list
+                    const defaultModel =
+                      v === "gemini"
+                        ? "gemini-2.5-pro"
+                        : supportedModels[v]?.[0];
                     form.setFieldsValue({
-                      model_name: supportedModels[v]?.[0],
+                      model_name: defaultModel,
                     });
                   }}
                   disabled={processing}

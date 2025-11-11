@@ -85,7 +85,7 @@ const IngestPage = () => {
     fetchSupportedModels();
     form.setFieldsValue({
       model_provider: "openai",
-      model_name: "gpt-4o",
+      model_name: "gpt-4o", // Keep OpenAI default
       custom_prompt: DEFAULT_PROMPT,
     });
     setPromptValue(DEFAULT_PROMPT);
@@ -298,7 +298,7 @@ const IngestPage = () => {
                   style={{ width: 170 }}
                   onChange={(v) => {
                     setSelectedProvider(v);
-                    // ✅ When user selects Gemini, default to the best 2.5 model
+                    // ✅ When user selects Gemini, default to the best model from the new list
                     const defaultModel =
                       v === "gemini"
                         ? "gemini-2.5-pro"
