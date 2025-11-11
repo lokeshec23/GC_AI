@@ -7,6 +7,8 @@ import {
   Space,
   Typography,
   Button,
+  Input, // Import Input for the search bar
+  Badge, // Import Badge for the notification icon
 } from "antd";
 import {
   FileTextOutlined,
@@ -14,9 +16,10 @@ import {
   SettingOutlined,
   UserOutlined,
   LogoutOutlined,
-  FileSearchOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  SearchOutlined, // For the search bar
+  BellOutlined, // For the notification icon
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -30,26 +33,14 @@ const MainLayout = ({ children }) => {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
-  // Menu items for sidebar
+  // Menu items for the sidebar (unchanged)
   const menuItems = [
-    {
-      key: "/ingest",
-      icon: <FileTextOutlined />,
-      label: "Ingest Guideline",
-    },
-    {
-      key: "/compare",
-      icon: <SwapOutlined />,
-      label: "Compare Guidelines",
-    },
-    {
-      key: "/settings",
-      icon: <SettingOutlined />,
-      label: "Settings",
-    },
+    { key: "/ingest", icon: <FileTextOutlined />, label: "Ingest Guideline" },
+    { key: "/compare", icon: <SwapOutlined />, label: "Compare Guidelines" },
+    { key: "/settings", icon: <SettingOutlined />, label: "Settings" },
   ];
 
-  // User dropdown menu
+  // User dropdown menu (unchanged)
   const userMenuItems = [
     {
       key: "profile",
@@ -62,9 +53,7 @@ const MainLayout = ({ children }) => {
       ),
       disabled: true,
     },
-    {
-      type: "divider",
-    },
+    { type: "divider" },
     {
       key: "logout",
       icon: <LogoutOutlined />,
@@ -82,32 +71,69 @@ const MainLayout = ({ children }) => {
   };
 
   return (
-    <Layout className="h-screen overflow-hidden">
-      {/* Header - Light white with shadow at bottom */}
-      <Header className="bg-white shadow-md flex items-center justify-between px-6 fixed w-full z-10 h-16">
-        <div className="flex items-center gap-3">
-          <FileSearchOutlined className="text-3xl text-blue-600" />
-          <Text className="text-xl font-bold text-gray-800">
-            Guideline Extraction System
-          </Text>
+    <Layout className="h-screen overflow-hidden font-sans">
+      {/* ✅ REDESIGNED HEADER */}
+      <Header className="bg-white shadow-sm flex items-center justify-between px-6 fixed w-full z-10 h-16">
+        {/* Left Side: Logo */}
+        <div className="flex items-center gap-6">
+          <img
+            src="/gc_logo.svg"
+            alt="Logo"
+            className="h-10 cursor-pointer" // Adjust height as needed
+          />
+          {/* Vertical divider line */}
+          {/* <div className="h-8 w-px bg-gray-200"></div> */}
         </div>
 
-        <Dropdown
-          menu={{ items: userMenuItems }}
-          placement="bottomRight"
-          trigger={["click"]}
-        >
-          <Space className="cursor-pointer hover:bg-gray-50 px-3 py-2 rounded-lg transition">
-            <Avatar icon={<UserOutlined />} className="bg-blue-500" />
-            <Text className="font-medium hidden sm:inline">
-              {user?.username}
-            </Text>
-          </Space>
-        </Dropdown>
+        {/* Right Side: Actions & User Menu */}
+        <div className="flex items-center gap-4">
+          {/* "How can I help you?" Action Button */}
+          {/* <Button
+            type="primary"
+            ghost
+            icon={<SearchOutlined />}
+            size="large"
+            className="!rounded-full !border-2 !border-blue-300 hover:!bg-blue-50"
+            style={{
+              background:
+                "linear-gradient(to right, rgba(230, 247, 255, 0.5), rgba(240, 245, 255, 0.5))",
+              color: "#4a90e2",
+            }}
+          >
+            How can I help you?
+          </Button> */}
+
+          {/* Notification Icon */}
+          <Badge count={3} size="small">
+            <Avatar
+              shape="circle"
+              icon={<BellOutlined />}
+              className="cursor-pointer bg-gray-100 text-gray-600 hover:bg-gray-200"
+            />
+          </Badge>
+
+          {/* User Avatar & Dropdown */}
+          <Dropdown
+            menu={{ items: userMenuItems }}
+            placement="bottomRight"
+            trigger={["click"]}
+          >
+            <div className="cursor-pointer">
+              <Avatar
+                icon={<UserOutlined />}
+                src={user?.avatarUrl}
+                className="bg-blue-500 text-white"
+              >
+                {/* Fallback to first letter of username */}
+                {user?.username?.[0]?.toUpperCase()}
+              </Avatar>
+            </div>
+          </Dropdown>
+        </div>
       </Header>
 
       <Layout className="mt-16 h-[calc(100vh-64px)]">
-        {/* Sidebar - White background matching content */}
+        {/* Sidebar (Unchanged) */}
         <Sider
           collapsible
           collapsed={collapsed}
@@ -117,7 +143,6 @@ const MainLayout = ({ children }) => {
           width={240}
           theme="light"
         >
-          {/* Collapse/Expand Button at Top */}
           <div className="flex justify-end p-4 border-b border-gray-200">
             <Button
               type="text"
@@ -126,8 +151,6 @@ const MainLayout = ({ children }) => {
               className="flex items-center justify-center"
             />
           </div>
-
-          {/* Menu */}
           <Menu
             mode="inline"
             selectedKeys={[location.pathname]}
@@ -137,7 +160,7 @@ const MainLayout = ({ children }) => {
           />
         </Sider>
 
-        {/* Main Content - Scrollable, fit to viewport */}
+        {/* Main Content (Unchanged) */}
         <Layout className="bg-gray-50">
           <Content className="overflow-y-auto h-full">
             <div className="p-6">{children}</div>
