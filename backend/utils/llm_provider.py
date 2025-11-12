@@ -1,17 +1,17 @@
 # backend/utils/llm_provider.py
 
-import json
-import re
+import time
 import requests
 from typing import List, Optional
 from openai import AzureOpenAI
 from config import get_model_config, GEMINI_API_BASE_URL
 
+
 class LLMProvider:
-    """
-    A unified and robust provider for communicating with different LLM APIs.
-    """
-    
+    """Unified LLM client for Azure OpenAI and Gemini with clean concurrency and minimal logs."""
+
+    _gemini_session = None  # shared session for connection reuse
+
     def __init__(
         self,
         provider: str,
@@ -23,115 +23,132 @@ class LLMProvider:
         stop_sequences: Optional[List[str]] = None,
         azure_endpoint: Optional[str] = None,
         azure_deployment: Optional[str] = None,
+        max_retries: int = 3,
+        backoff_base: float = 2.0,
     ):
         self.provider = provider.lower()
+        self.api_key = api_key
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.top_p = top_p
         self.stop_sequences = stop_sequences or []
-        
-        # ✅ CORRECTED: Save the api_key to the instance
-        self.api_key = api_key
-        
+        self.max_retries = max_retries
+        self.backoff_base = backoff_base
+
         if self.provider == "openai":
-            if not azure_endpoint or not azure_deployment or not api_key:
+            if not all([azure_endpoint, azure_deployment, api_key]):
                 raise ValueError("Azure OpenAI requires API key, endpoint, and deployment name.")
-            
             self.client = AzureOpenAI(
-                api_key=self.api_key, # Use self.api_key for consistency
+                api_key=self.api_key,
                 api_version="2024-02-01",
-                azure_endpoint=azure_endpoint
+                azure_endpoint=azure_endpoint,
             )
             self.deployment = azure_deployment
-            print(f"✅ Azure OpenAI client initialized for deployment: '{self.deployment}'")
-            
+            print(f"[INIT] Azure OpenAI ready (deployment: {self.deployment})")
+
         elif self.provider == "gemini":
-            if not self.api_key:
+            if not api_key:
                 raise ValueError("Gemini requires an API key.")
-            # The URL will be constructed in the generate method
-            print(f"✅ Gemini API client configured for model: '{self.model}'")
+            if not LLMProvider._gemini_session:
+                LLMProvider._gemini_session = requests.Session()
+            print(f"[INIT] Gemini ready (model: {self.model})")
+
         else:
             raise ValueError(f"Unsupported LLM provider: '{self.provider}'")
 
+    # ---------------------- Public API ----------------------
     def generate(self, prompt: str) -> str:
-        """Dispatches the generation request to the appropriate provider."""
         if self.provider == "openai":
             return self._generate_azure_openai(prompt)
-        elif self.provider == "gemini":
+        if self.provider == "gemini":
             return self._generate_gemini(prompt)
-        raise NotImplementedError(f"Generation for provider '{self.provider}' is not implemented.")
+        raise NotImplementedError(f"Provider '{self.provider}' not implemented.")
 
+    # ---------------------- OpenAI ----------------------
     def _generate_azure_openai(self, prompt: str) -> str:
-        """Sends a request to the Azure OpenAI API."""
-        print(f"📤 Calling Azure OpenAI deployment: '{self.deployment}'")
-        try:
-            response = self.client.chat.completions.create(
-                model=self.deployment,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                top_p=self.top_p,
-                stop=self.stop_sequences if self.stop_sequences else None,
-            )
-            content = response.choices[0].message.content
-            print(f"   ✅ Azure OpenAI response received ({len(content)} chars).")
-            return content
-        except Exception as e:
-            print(f"   ❌ Azure OpenAI API Error: {e}")
-            raise Exception(f"Azure OpenAI API call failed: {e}")
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.deployment,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    top_p=self.top_p,
+                    stop=self.stop_sequences or None,
+                )
+                content = response.choices[0].message.content
+                print(f"[OpenAI] Response OK ({len(content)} chars)")
+                return content
+            except Exception as e:
+                print(f"[OpenAI] Attempt {attempt} failed: {e}")
+                if attempt < self.max_retries:
+                    time.sleep(self.backoff_base ** attempt)
+                    continue
+                # Fallback to gpt-4o if available
+                if "gpt-4o" not in self.deployment:
+                    try:
+                        print("[OpenAI] Switching to fallback model: gpt-4o")
+                        self.deployment = "gpt-4o"
+                        response = self.client.chat.completions.create(
+                            model=self.deployment,
+                            messages=[{"role": "user", "content": prompt}],
+                            temperature=self.temperature,
+                            max_tokens=self.max_tokens,
+                            top_p=self.top_p,
+                        )
+                        content = response.choices[0].message.content
+                        print(f"[OpenAI] Fallback succeeded ({len(content)} chars)")
+                        return content
+                    except Exception as e2:
+                        print(f"[OpenAI] Fallback failed: {e2}")
+                raise Exception(f"Azure OpenAI failed after {self.max_retries} attempts: {e}")
 
+    # ---------------------- Gemini ----------------------
     def _generate_gemini(self, prompt: str) -> str:
-        """Sends a request to the Google Gemini API."""
-        
-        api_url = f"{GEMINI_API_BASE_URL}/{self.model}:generateContent?key={self.api_key}"
-        
-        print(f"📤 Calling Gemini API endpoint: '{api_url.split('?')[0]}'")
-        
         model_config = get_model_config(self.model)
-        effective_max_tokens = model_config.get("max_output", 8192)
-        
-        headers = {"Content-Type": "application/json"}
+        api_url = f"{GEMINI_API_BASE_URL}/{self.model}:generateContent?key={self.api_key}"
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": self.temperature,
-                "maxOutputTokens": effective_max_tokens,
+                "maxOutputTokens": model_config.get("max_output", 8192),
                 "topP": self.top_p,
                 "stopSequences": self.stop_sequences,
-            }
+            },
         }
-        
-        try:
-            response = requests.post(api_url, headers=headers, json=payload, timeout=180)
-            response.raise_for_status()
-            
-            result = response.json()
-            
-            if not result.get("candidates"):
-                finish_details = result.get("promptFeedback", {})
-                raise ValueError(f"Request blocked or failed. Reason: {finish_details.get('blockReason', 'Unknown')}")
+        headers = {"Content-Type": "application/json"}
+        session = LLMProvider._gemini_session or requests.Session()
 
-            candidate = result["candidates"][0]
-            finish_reason = candidate.get("finishReason", "UNKNOWN")
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = session.post(api_url, headers=headers, json=payload, timeout=180)
+                if response.status_code == 503:
+                    print(f"[Gemini] 503 overload (attempt {attempt}), retrying...")
+                    time.sleep(self.backoff_base ** attempt)
+                    continue
+                response.raise_for_status()
 
-            if finish_reason == "MAX_TOKENS":
-                print("   ⚠️ WARNING: Response was truncated due to max token limit.")
-            elif finish_reason == "SAFETY":
-                 raise ValueError("Response blocked due to safety settings.")
-            
-            if "content" in candidate and "parts" in candidate["content"]:
-                text_response = "".join(part["text"] for part in candidate["content"]["parts"] if "text" in part)
-                print(f"   ✅ Gemini response received ({len(text_response)} chars).")
-                return text_response
+                result = response.json()
+                candidates = result.get("candidates", [])
+                if not candidates:
+                    reason = result.get("promptFeedback", {}).get("blockReason", "Unknown")
+                    raise ValueError(f"Gemini blocked request: {reason}")
 
-            raise ValueError("Unexpected Gemini response format: No text content found.")
-        except requests.exceptions.HTTPError as e:
-            print(f"   ❌ Gemini API HTTP Error: {e.response.status_code} - {e.response.text}")
-            raise Exception(f"Gemini API call failed with status {e.response.status_code}.")
-        except requests.exceptions.RequestException as e:
-            print(f"   ❌ Gemini API request failed: {e}")
-            raise Exception(f"Network error while calling Gemini API: {e}")
-        except Exception as e:
-            print(f"   ❌ An error occurred during Gemini call: {e}")
-            raise
+                parts = candidates[0].get("content", {}).get("parts", [])
+                text = "".join(p.get("text", "") for p in parts)
+                print(f"[Gemini] Response OK ({len(text)} chars)")
+                return text
+
+            except Exception as e:
+                print(f"[Gemini] Attempt {attempt} failed: {e}")
+                if attempt < self.max_retries:
+                    time.sleep(self.backoff_base ** attempt)
+                    continue
+
+                if self.model == "gemini-2.5-pro":
+                    print("[Gemini] Switching to fallback model: gemini-2.5-flash")
+                    self.model = "gemini-2.5-flash"
+                    return self._generate_gemini(prompt)
+
+                raise Exception(f"Gemini failed after {self.max_retries} attempts: {e}")
