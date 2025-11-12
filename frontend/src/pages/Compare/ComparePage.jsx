@@ -28,35 +28,114 @@ const { TextArea } = Input;
 const { Option } = Select;
 
 // Default comparison prompt
-const DEFAULT_COMPARISON_PROMPT = `You are an expert mortgage guideline analyst. Your task is to compare two sets of guideline data, "Guideline 1 (Base)" and "Guideline 2 (New)".
+// const DEFAULT_COMPARISON_PROMPT = `You are a senior mortgage underwriting analyst. Your task is to perform a detailed, side-by-side comparison of two mortgage guideline documents: "Guideline 1" and "Guideline 2".
 
-INSTRUCTIONS:
-1. Thoroughly compare the content of both guidelines.
-2. Identify items that were added, removed, or modified.
-3. Your output must be a JSON array of objects.
+// ### PRIMARY GOAL
+// Analyze the two provided sets of guideline data, identify all similarities and differences for each rule, and structure the output as a clean, valid JSON array suitable for a comparison table.
 
-OUTPUT FORMAT (JSON ONLY):
-You have the freedom to define the keys, but a good structure would be:
-- "category": (e.g., "Added", "Removed", "Modified")
-- "section": The topic or section of the rule.
-- "guideline_1_summary": What was in the base guideline.
-- "guideline_2_summary": What is in the new guideline.
-- "change_description": A brief summary of the change.
+// ### OUTPUT SCHEMA (JSON ONLY)
+// You MUST return a valid JSON array. Each object in the array represents a single comparison row and MUST contain these five keys:
+// 1.  "rule_id": A sequential number for the rule being compared (e.g., 1, 2, 3...).
+// 2.  "category": The broad topic the rule falls under (e.g., "Borrower Eligibility", "Credit", "Loan Parameters").
+// 3.  "attribute": The specific rule or policy being defined (e.g., "Minimum Credit Score", "Housing Event Seasoning").
+// 4.  "guideline_1": The exact rule or summary from the first guideline document. If not present, state "Not Addressed".
+// 5.  "guideline_2": The exact rule or summary from the second guideline document. If not present, state "Not Addressed".
+// 6.  "comparison_notes": A concise, expert analysis of the difference or similarity. Start with the key difference and then provide context.
 
-EXAMPLE:
-[
-  {
-    "category": "Modified",
-    "section": "Credit Score Requirement",
-    "guideline_1_summary": "Minimum FICO score is 620.",
-    "guideline_2_summary": "Minimum FICO score is 640.",
-    "change_description": "The minimum FICO score requirement was increased from 620 to 640."
-  }
-]
+// ### EXTRACTION & ANALYSIS INSTRUCTIONS
+// 1.  **Align Rules:** Match corresponding rules from both guidelines based on their "attribute" or topic. If a rule exists in one but not the other, still create a row for it.
+// 2.  **Extract Verbatim:** For the "guideline_1" and "guideline_2" fields, extract the rule's text as accurately as possible.
+// 3.  **Analyze and Compare:** For the "comparison_notes" field, provide a meaningful analysis. Do not just state that they are different. Explain *how* they are different. For example: "TLS has a more lenient credit score requirement (660) compared to NQM's (720)." or "Both lenders have nearly identical policies on this rule."
+// 4.  **Be Comprehensive:** Create a row for every single attribute found in either document to ensure a complete comparison.
 
-CRITICAL RULES:
-- The final output MUST be a single, valid JSON array.
-- Do not include any text or explanations outside of the JSON array.`;
+// ### EXAMPLE OF PERFECT OUTPUT
+// This is the exact format you must follow.
+
+// [
+//   {
+//     "rule_id": 1,
+//     "category": "Borrower Eligibility",
+//     "attribute": "Minimum Credit Score (DSCR)",
+//     "guideline_1": "660 for standard DSCR. program. 720 for DSCR Supreme.",
+//     "guideline_2": "660 for standard DSCR. No US FICO required for Foreign Nationals.",
+//     "comparison_notes": "Both lenders have a similar minimum score for standard DSCR, but Guideline 1 has a higher requirement for its 'Supreme' program."
+//   },
+//   {
+//     "rule_id": 2,
+//     "category": "DSCR",
+//     "attribute": "Minimum DSCR Ratio",
+//     "guideline_1": "0.75 for Investor DSCR. 1.00 for DSCR Supreme.",
+//     "guideline_2": "Generally > 1.00. Ratios from 0.75 - 0.99 require a formal exception.",
+//     "comparison_notes": "Guideline 1 has a dedicated program for DSCR < 1.00, while Guideline 2 treats it as an exception requiring formal review."
+//   },
+//   {
+//     "rule_id": 3,
+//     "category": "Property Eligibility",
+//     "attribute": "Rural Properties (DSCR)",
+//     "guideline_1": "Not Permitted. Guideline refers to CFPB rural/underserved tool for definition.",
+//     "guideline_2": "Ineligible.",
+//     "comparison_notes": "Identical policy; both lenders consider rural properties ineligible for this program."
+//   }
+// ]
+
+// ### FINAL COMMANDS
+// - Your entire response MUST be a single, valid JSON array.
+// - Start with '[' and end with ']'.
+// - DO NOT include any text, explanations, or markdown outside of the JSON.
+// - Every object MUST have all six specified keys.`;
+
+// Replace DEFAULT_COMPARISON_PROMPT in ComparePage.jsx
+
+// Replace DEFAULT_COMPARISON_PROMPT in ComparePage.jsx
+
+const DEFAULT_COMPARISON_PROMPT = `You are a senior mortgage underwriting analyst. Your task is to perform a detailed, side-by-side comparison of guideline rules provided as pairs of JSON objects.
+
+### PRIMARY GOAL
+For each pair of objects in the "DATA CHUNK TO COMPARE" array, you must generate a single, consolidated JSON object that accurately represents the comparison, matching the desired output schema.
+
+### INPUT DATA STRUCTURE
+You will receive a JSON array. Each object in the array contains two keys: "guideline_1_data" and "guideline_2_data".
+- "guideline_1_data" will be a JSON object representing a row from the first Excel file, or the string "Not present".
+- "guideline_2_data" will be a JSON object representing a row from the second Excel file, or the string "Not present".
+- The original Excel column names are the keys within these objects.
+
+### OUTPUT SCHEMA (JSON ONLY)
+You MUST return a valid JSON array. Each object in the array MUST contain these six keys:
+1.  "rule_id": The 'Rule Id' from the source data. If not present in either, generate a sequential number.
+2.  "category": The 'Category' from the source data.
+3.  "attribute": The 'Attribute' from the source data.
+4.  "guideline_1": The text of the rule from the first guideline. Find this value within the 'guideline_1_data' object (the key might be the filename, e.g., 'NQM Funding Guideline'). If 'guideline_1_data' is "Not present", this value MUST be "Not present".
+5.  "guideline_2": The text of the rule from the second guideline. Find this value within the 'guideline_2_data' object (the key might be the filename, e.g., 'TLS Guideline'). If 'guideline_2_data' is "Not present", this value MUST be "Not present".
+6.  "comparison_notes": Your expert analysis of the difference or similarity. This is the most important field. Be concise, insightful, and clear.
+
+### DETAILED ANALYSIS INSTRUCTIONS
+1.  **Iterate:** Process each object in the input array. For each object, you will produce one object in the output array.
+2.  **Identify Key Information:** From the 'guideline_1_data' and 'guideline_2_data' objects, extract the values for 'Rule Id', 'Category', and 'Attribute'.
+3.  **Extract Guideline Text:** The main rule text in the source objects will be under a key that is the original filename (e.g., 'NQM Funding Guideline' or 'TLS Guideline'). You must correctly identify and extract this text.
+4.  **Analyze and Summarize:** Compare the extracted guideline texts. In "comparison_notes", do not just state they are different. Explain *how*. For example: "TLS has a more lenient credit score, but NQM has a more restrictive LTV for loans over $1.5M."
+5.  **Handle Missing Data:** If 'guideline_1_data' is "Not present", the 'comparison_notes' should state this is a new rule in Guideline 2. If 'guideline_2_data' is "Not present", state it was removed.
+
+### EXAMPLE OF PERFECT OUTPUT
+If you are given an input pair like this:
+{
+  "guideline_1_data": { "Rule Id": 1, "Category": "Borrower Eligibility", "Attribute": "Minimum Credit Score (DSCR)", "NQM Funding Guideline": "660 for standard DSCR program. 720 for DSCR Supreme." },
+  "guideline_2_data": { "Rule Id": 1, "Category": "Borrower Eligibility", "Attribute": "Minimum Credit Score (DSCR)", "TLS Guideline": "660 for standard DSCR. No US FICO required for Foreign Nationals." }
+}
+
+Your corresponding output object MUST be:
+{
+  "rule_id": 1,
+  "category": "Borrower Eligibility",
+  "attribute": "Minimum Credit Score (DSCR)",
+  "guideline_1": "660 for standard DSCR program. 720 for DSCR Supreme.",
+  "guideline_2": "660 for standard DSCR. No US FICO required for Foreign Nationals.",
+  "comparison_notes": "Both lenders have a similar minimum score (660) for standard DSCR, but NQM has a higher requirement for its Supreme program. TLS provides an explicit allowance for Foreign Nationals without a US FICO."
+}
+
+### FINAL COMMANDS
+- Your entire response MUST be a single, valid JSON array.
+- The number of objects in your output must match the number of pairs in the input.
+- DO NOT add any text or markdown outside of the JSON array. Start with '[' and end with ']'.`;
 
 const ComparePage = () => {
   const [form] = Form.useForm();

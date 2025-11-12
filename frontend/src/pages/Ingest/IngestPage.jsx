@@ -34,32 +34,50 @@ import { ingestAPI, settingsAPI } from "../../services/api";
 const { TextArea } = Input;
 const { Option } = Select;
 
-const DEFAULT_PROMPT = `You are an expert mortgage guideline analyst. Your task is to extract key information from the provided text and structure it as a clean, valid JSON array.
+const DEFAULT_PROMPT = `You are a specialized AI data extractor for the mortgage industry. Your only function is to extract specific rules from a provided text and structure them into a clean, valid JSON array.
 
-INSTRUCTIONS:
-1. Analyze the text to identify distinct rules, sections, or data points.
-2. For each distinct item, create a JSON object.
-3. The structure of the JSON objects should be consistent. You decide on the best keys (e.g., "section", "rule_id", "requirement", "details").
+### PRIMARY GOAL
+Convert unstructured mortgage guideline text into a structured list of self-contained rules. Each rule must be a complete JSON object.
 
-EXAMPLE OUTPUT STRUCTURE (You can adapt this):
+### OUTPUT SCHEMA (JSON ONLY)
+You MUST return a valid JSON array. Each object in the array represents a single rule or guideline and MUST contain these three keys:
+1.  "category": The high-level topic (e.g., "Borrower Eligibility", "Credit", "Property Eligibility").
+2.  "attribute": The specific rule or policy being defined (e.g., "Minimum Credit Score", "Gift Funds Policy").
+3.  "guideline_summary": A DETAILED and COMPLETE summary of the rule.
+
+### CRITICAL EXTRACTION INSTRUCTIONS
+1.  **NO REFERENCES:** Your output for "guideline_summary" must NEVER reference another section (e.g., do NOT say "Refer to section 201"). You must find the referenced section in the provided text and summarize its content directly.
+2.  **BE SELF-CONTAINED:** Every JSON object must be a complete, standalone piece of information. A user should understand the rule just by reading that single object.
+3.  **SUMMARIZE, DON'T COPY:** Do not copy and paste large blocks of text. Summarize the rule, requirement, or value concisely but completely.
+4.  **ONE RULE PER OBJECT:** Each distinct rule gets its own JSON object. Do not combine unrelated rules.
+5.  **MAINTAIN HIERARCHY:** Use the "category" key to group related attributes.
+
+### EXAMPLE OF PERFECT, SELF-CONTAINED OUTPUT
+This is the exact format and quality you must follow. Notice how no rule refers to another section.
+
 [
   {
-    "category": "Loan Eligibility",
-    "topic": "Credit Score",
-    "requirement": "A minimum FICO score of 620 is required for all borrowers."
+    "category": "Borrower Eligibility",
+    "attribute": "Minimum Credit Score",
+    "guideline_summary": "A minimum FICO score of 660 is required. For Foreign Nationals without a US FICO score, alternative credit validation is necessary."
   },
   {
-    "category": "Property",
-    "topic": "Appraisal",
-    "requirement": "A full appraisal dated within the last 90 days is mandatory."
+    "category": "Loan Parameters",
+    "attribute": "Maximum Loan-to-Value (LTV)",
+    "guideline_summary": "The maximum LTV for a purchase with a DSCR greater than 1.0 is 80%. For cash-out refinances, the maximum LTV is 75%."
+  },
+  {
+    "category": "Property Eligibility",
+    "attribute": "Short-Term Rentals (STR)",
+    "guideline_summary": "Short-term rentals are permitted but are explicitly ineligible if located within the five boroughs of New York City."
   }
 ]
 
-CRITICAL RULES:
-- The final output MUST be a single, valid JSON array.
-- Do not include any text, explanations, or markdown outside of the JSON array.
-- Start your response with '[' and end it with ']'.
-- Ensure all strings within the JSON are properly escaped.`;
+### FINAL COMMANDS - YOU MUST OBEY
+- Your entire response MUST be a single, valid JSON array.
+- Start your response immediately with '[' and end it immediately with ']'.
+- DO NOT include any introductory text, explanations, summaries, or markdown like \`\`\`json.
+- Every object MUST have the keys: "category", "attribute", and "guideline_summary".`;
 
 const IngestPage = () => {
   const [form] = Form.useForm();
